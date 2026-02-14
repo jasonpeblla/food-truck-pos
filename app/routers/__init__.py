@@ -12,6 +12,7 @@ from .history import router as history_router
 from .discounts import router as discounts_router
 from .export import router as export_router
 from .refunds import router as refunds_router
+from .settings import router as settings_router
 
 __all__ = [
     "menu_router",
@@ -27,5 +28,6 @@ __all__ = [
     "history_router",
     "discounts_router",
     "export_router",
-    "refunds_router"
+    "refunds_router",
+    "settings_router"
 ]
