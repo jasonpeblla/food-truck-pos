@@ -139,7 +139,7 @@ interface PrepChecklist {
   progress_percent: number
 }
 
-type View = 'pos' | 'orders' | 'queue' | 'kitchen' | 'sales' | 'settings' | 'locations' | 'shifts' | 'inventory' | 'prep'
+type View = 'pos' | 'orders' | 'queue' | 'kitchen' | 'sales' | 'settings' | 'locations' | 'shifts' | 'inventory' | 'prep' | 'catering'
 
 // Sound effects (using Web Audio API)
 const playSound = (type: 'success' | 'alert' | 'ding') => {
@@ -219,6 +219,15 @@ function App() {
     can_redeem: boolean, reward_value: number, points_to_next_reward: number
   } | null>(null)
   const [loyaltyDiscount, setLoyaltyDiscount] = useState(0)
+  
+  // Catering state
+  const [cateringOrders, setCateringOrders] = useState<any[]>([])
+  const [showCateringForm, setShowCateringForm] = useState(false)
+  const [cateringForm, setCateringForm] = useState({
+    customer_name: '', customer_phone: '', customer_email: '',
+    event_name: '', event_date: '', event_location: '', guest_count: 20,
+    special_requests: ''
+  })
   
   // Location state
   const [locations, setLocations] = useState<Location[]>([])
@@ -370,6 +379,49 @@ function App() {
       console.error('Failed to fetch weather recs:', err)
     }
   }, [])
+
+  // Fetch catering orders
+  const fetchCateringOrders = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/catering`)
+      const data = await res.json()
+      setCateringOrders(data)
+    } catch (err) {
+      console.error('Failed to fetch catering orders:', err)
+    }
+  }, [])
+
+  // Submit catering request
+  const submitCateringRequest = async () => {
+    if (!cateringForm.customer_name || !cateringForm.customer_phone || !cateringForm.event_date) {
+      showNotification('Please fill required fields', 'alert')
+      return
+    }
+    try {
+      // Build items from menu (simplified - charge per person)
+      const perPerson = 15.00 // Base catering price per person
+      const res = await fetch(`${API_BASE}/catering`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...cateringForm,
+          items: [{ name: "Catering Package", quantity: cateringForm.guest_count, price_per_unit: perPerson }]
+        })
+      })
+      if (res.ok) {
+        showNotification('Catering request submitted!')
+        setShowCateringForm(false)
+        setCateringForm({
+          customer_name: '', customer_phone: '', customer_email: '',
+          event_name: '', event_date: '', event_location: '', guest_count: 20,
+          special_requests: ''
+        })
+        fetchCateringOrders()
+      }
+    } catch (err) {
+      showNotification('Failed to submit request', 'alert')
+    }
+  }
 
   // Fetch prep checklist
   const fetchPrepChecklist = useCallback(async () => {
@@ -591,7 +643,10 @@ function App() {
     if (view === 'prep') {
       fetchPrepChecklist()
     }
-  }, [view, fetchDailySales, fetchHourlySales, fetchKitchenOrders, fetchLocations, fetchShifts, fetchPrepChecklist])
+    if (view === 'catering') {
+      fetchCateringOrders()
+    }
+  }, [view, fetchDailySales, fetchHourlySales, fetchKitchenOrders, fetchLocations, fetchShifts, fetchPrepChecklist, fetchCateringOrders])
 
   // Show notification
   const showNotification = (msg: string, type: 'success' | 'alert' = 'success') => {
@@ -2398,6 +2453,148 @@ function App() {
             </div>
           </div>
         )}
+
+        {/* Catering View */}
+        {view === 'catering' && (
+          <div className="p-4 overflow-y-auto h-full">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold">🎉 Catering Orders</h2>
+              <button
+                onClick={() => setShowCateringForm(true)}
+                className="bg-truck-orange hover:bg-orange-600 px-4 py-2 rounded-lg font-medium"
+              >
+                + New Request
+              </button>
+            </div>
+
+            {/* Upcoming Orders */}
+            {cateringOrders.length === 0 ? (
+              <div className="bg-gray-800 rounded-xl p-8 text-center">
+                <div className="text-4xl mb-4">📅</div>
+                <div className="text-xl font-bold mb-2">No Upcoming Catering</div>
+                <p className="text-gray-400">Create a new catering request to get started</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {cateringOrders.map(order => (
+                  <div key={order.id} className="bg-gray-800 rounded-xl p-4">
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <div className="text-lg font-bold">{order.event_name || 'Catering Event'}</div>
+                        <div className="text-sm text-gray-400">{order.customer_name} • {order.customer_phone}</div>
+                      </div>
+                      <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                        order.status === 'confirmed' ? 'bg-green-500/20 text-green-400' :
+                        order.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
+                        'bg-gray-500/20 text-gray-400'
+                      }`}>
+                        {order.status.toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-sm mb-3">
+                      <div><span className="text-gray-500">Date:</span> {new Date(order.event_date).toLocaleDateString()}</div>
+                      <div><span className="text-gray-500">Guests:</span> {order.guest_count}</div>
+                      <div><span className="text-gray-500">Location:</span> {order.event_location || 'TBD'}</div>
+                      <div><span className="text-gray-500">Total:</span> <span className="text-truck-yellow font-bold">${order.total.toFixed(2)}</span></div>
+                    </div>
+                    <div className="flex gap-2">
+                      {!order.deposit_paid && (
+                        <button className="flex-1 bg-truck-yellow text-gray-900 py-2 rounded-lg text-sm font-medium">
+                          Deposit: ${order.deposit.toFixed(2)}
+                        </button>
+                      )}
+                      {order.deposit_paid && !order.fully_paid && (
+                        <span className="text-sm text-green-400">✓ Deposit Paid</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* New Catering Form Modal */}
+            {showCateringForm && (
+              <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+                <div className="bg-gray-800 rounded-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
+                  <h3 className="text-xl font-bold mb-4">New Catering Request</h3>
+                  <div className="space-y-3">
+                    <input
+                      placeholder="Customer Name *"
+                      value={cateringForm.customer_name}
+                      onChange={e => setCateringForm({...cateringForm, customer_name: e.target.value})}
+                      className="w-full bg-gray-700 rounded-lg px-4 py-3"
+                    />
+                    <input
+                      placeholder="Phone *"
+                      value={cateringForm.customer_phone}
+                      onChange={e => setCateringForm({...cateringForm, customer_phone: e.target.value})}
+                      className="w-full bg-gray-700 rounded-lg px-4 py-3"
+                    />
+                    <input
+                      placeholder="Email"
+                      value={cateringForm.customer_email}
+                      onChange={e => setCateringForm({...cateringForm, customer_email: e.target.value})}
+                      className="w-full bg-gray-700 rounded-lg px-4 py-3"
+                    />
+                    <input
+                      placeholder="Event Name"
+                      value={cateringForm.event_name}
+                      onChange={e => setCateringForm({...cateringForm, event_name: e.target.value})}
+                      className="w-full bg-gray-700 rounded-lg px-4 py-3"
+                    />
+                    <input
+                      type="date"
+                      value={cateringForm.event_date}
+                      onChange={e => setCateringForm({...cateringForm, event_date: e.target.value})}
+                      className="w-full bg-gray-700 rounded-lg px-4 py-3"
+                    />
+                    <input
+                      placeholder="Event Location"
+                      value={cateringForm.event_location}
+                      onChange={e => setCateringForm({...cateringForm, event_location: e.target.value})}
+                      className="w-full bg-gray-700 rounded-lg px-4 py-3"
+                    />
+                    <div className="flex items-center gap-3">
+                      <label className="text-gray-400">Guests:</label>
+                      <input
+                        type="number"
+                        min="5"
+                        value={cateringForm.guest_count}
+                        onChange={e => setCateringForm({...cateringForm, guest_count: parseInt(e.target.value) || 20})}
+                        className="flex-1 bg-gray-700 rounded-lg px-4 py-3"
+                      />
+                    </div>
+                    <textarea
+                      placeholder="Special requests, dietary restrictions..."
+                      value={cateringForm.special_requests}
+                      onChange={e => setCateringForm({...cateringForm, special_requests: e.target.value})}
+                      rows={3}
+                      className="w-full bg-gray-700 rounded-lg px-4 py-3 resize-none"
+                    />
+                    {/* Price Estimate */}
+                    <div className="bg-gray-700 rounded-lg p-3 text-sm">
+                      <div className="flex justify-between"><span>Subtotal ({cateringForm.guest_count} × $15)</span><span>${(cateringForm.guest_count * 15).toFixed(2)}</span></div>
+                      <div className="flex justify-between text-gray-400"><span>Service Fee (18%)</span><span>${(cateringForm.guest_count * 15 * 0.18).toFixed(2)}</span></div>
+                      <div className="flex justify-between font-bold border-t border-gray-600 pt-2 mt-2">
+                        <span>Total</span>
+                        <span className="text-truck-yellow">${(cateringForm.guest_count * 15 * 1.18).toFixed(2)}</span>
+                      </div>
+                      <div className="text-xs text-gray-400 mt-1">50% deposit required: ${(cateringForm.guest_count * 15 * 1.18 * 0.5).toFixed(2)}</div>
+                    </div>
+                  </div>
+                  <div className="flex gap-3 mt-6">
+                    <button onClick={() => setShowCateringForm(false)} className="flex-1 py-3 bg-gray-700 rounded-lg font-medium">
+                      Cancel
+                    </button>
+                    <button onClick={submitCateringRequest} className="flex-1 py-3 bg-truck-orange rounded-lg font-bold">
+                      Submit Request
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </main>
 
       {/* Bottom Navigation */}
@@ -2411,6 +2608,7 @@ function App() {
           { id: 'shifts', icon: '⏱️', label: 'Shift' },
           { id: 'prep', icon: '📋', label: 'Prep' },
           { id: 'inventory', icon: '📦', label: 'Stock', badge: stockAlerts.length || undefined },
+          { id: 'catering', icon: '🎉', label: 'Catering', badge: cateringOrders.length || undefined },
           { id: 'locations', icon: '📍', label: 'Location' },
           { id: 'settings', icon: '⚙️', label: 'Menu' },
         ].map(tab => (
