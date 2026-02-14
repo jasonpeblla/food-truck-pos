@@ -55,6 +55,16 @@ interface KitchenOrder {
   items: { name: string; quantity: number; customizations: string }[]
 }
 
+interface Location {
+  id: number
+  name: string
+  address: string
+  latitude: number | null
+  longitude: number | null
+  is_active: boolean
+  notes: string
+}
+
 interface DailySales {
   date: string
   total_orders: number
@@ -66,7 +76,7 @@ interface DailySales {
   average_order_value: number
 }
 
-type View = 'pos' | 'orders' | 'queue' | 'kitchen' | 'sales' | 'settings'
+type View = 'pos' | 'orders' | 'queue' | 'kitchen' | 'sales' | 'settings' | 'locations'
 
 // Sound effects (using Web Audio API)
 const playSound = (type: 'success' | 'alert' | 'ding') => {
@@ -128,6 +138,14 @@ function App() {
   const [feedbackEmail, setFeedbackEmail] = useState("")
   const [submittingFeedback, setSubmittingFeedback] = useState(false)
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false)
+  
+  // Location state
+  const [locations, setLocations] = useState<Location[]>([])
+  const [activeLocation, setActiveLocation] = useState<Location | null>(null)
+  const [showAddLocation, setShowAddLocation] = useState(false)
+  const [newLocationName, setNewLocationName] = useState('')
+  const [newLocationAddress, setNewLocationAddress] = useState('')
+  const [gettingGPS, setGettingGPS] = useState(false)
   
   const prevReadyCountRef = useRef(0)
 
@@ -212,11 +230,88 @@ function App() {
     }
   }, [])
 
+  // Fetch locations
+  const fetchLocations = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/locations`)
+      const data = await res.json()
+      setLocations(data)
+      const active = data.find((l: Location) => l.is_active)
+      setActiveLocation(active || null)
+    } catch (err) {
+      console.error('Failed to fetch locations:', err)
+    }
+  }, [])
+
+  // Activate location
+  const activateLocation = async (locationId: number) => {
+    try {
+      await fetch(`${API_BASE}/locations/${locationId}/activate`, { method: 'POST' })
+      fetchLocations()
+      showNotification('Location activated!')
+    } catch (err) {
+      showNotification('Failed to activate location', 'alert')
+    }
+  }
+
+  // Create location with optional GPS
+  const createLocation = async (withGPS: boolean = false) => {
+    if (!newLocationName.trim()) return
+    
+    let lat = null, lng = null
+    
+    if (withGPS && navigator.geolocation) {
+      setGettingGPS(true)
+      try {
+        const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true })
+        })
+        lat = pos.coords.latitude
+        lng = pos.coords.longitude
+      } catch (err) {
+        console.error('GPS failed:', err)
+      }
+      setGettingGPS(false)
+    }
+    
+    try {
+      await fetch(`${API_BASE}/locations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newLocationName.trim(),
+          address: newLocationAddress.trim(),
+          latitude: lat,
+          longitude: lng
+        })
+      })
+      setShowAddLocation(false)
+      setNewLocationName('')
+      setNewLocationAddress('')
+      fetchLocations()
+      showNotification('Location added!')
+    } catch (err) {
+      showNotification('Failed to add location', 'alert')
+    }
+  }
+
+  // Delete location
+  const deleteLocation = async (locationId: number) => {
+    try {
+      await fetch(`${API_BASE}/locations/${locationId}`, { method: 'DELETE' })
+      fetchLocations()
+      showNotification('Location deleted')
+    } catch (err) {
+      showNotification('Failed to delete location', 'alert')
+    }
+  }
+
   // Initial load and polling
   useEffect(() => {
     fetchMenu()
     fetchOrders()
     fetchQueue()
+    fetchLocations()
     
     const interval = setInterval(() => {
       fetchOrders()
@@ -227,7 +322,7 @@ function App() {
     }, 3000)
     
     return () => clearInterval(interval)
-  }, [fetchMenu, fetchOrders, fetchQueue, fetchKitchenOrders, view])
+  }, [fetchMenu, fetchOrders, fetchQueue, fetchKitchenOrders, fetchLocations, view])
 
   useEffect(() => {
     if (view === 'sales') {
@@ -236,7 +331,10 @@ function App() {
     if (view === 'kitchen') {
       fetchKitchenOrders()
     }
-  }, [view, fetchDailySales, fetchKitchenOrders])
+    if (view === 'locations') {
+      fetchLocations()
+    }
+  }, [view, fetchDailySales, fetchKitchenOrders, fetchLocations])
 
   // Show notification
   const showNotification = (msg: string, type: 'success' | 'alert' = 'success') => {
@@ -437,6 +535,14 @@ function App() {
           🌮 Food Truck POS
         </h1>
         <div className="flex items-center gap-3">
+          {activeLocation && (
+            <button
+              onClick={() => setView('locations')}
+              className="text-xs bg-truck-orange/20 text-truck-orange px-2 py-1 rounded flex items-center gap-1 hover:bg-truck-orange/30"
+            >
+              📍 {activeLocation.name}
+            </button>
+          )}
           {!isOnline && (
             <span className="text-xs bg-yellow-500 text-yellow-900 px-2 py-1 rounded">OFFLINE</span>
           )}
@@ -1055,6 +1161,148 @@ function App() {
             </div>
           </div>
         )}
+
+        {/* Locations View */}
+        {view === 'locations' && (
+          <div className="p-4 overflow-y-auto h-full">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold">📍 Locations & Events</h2>
+              <button
+                onClick={() => setShowAddLocation(true)}
+                className="bg-truck-orange hover:bg-orange-600 px-4 py-2 rounded-lg font-medium"
+              >
+                + Add Location
+              </button>
+            </div>
+
+            {/* Add Location Modal */}
+            {showAddLocation && (
+              <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+                <div className="bg-gray-800 rounded-2xl p-6 max-w-md w-full">
+                  <h3 className="text-xl font-bold mb-4">Add New Location</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-1">Location Name</label>
+                      <input
+                        type="text"
+                        value={newLocationName}
+                        onChange={e => setNewLocationName(e.target.value)}
+                        placeholder="e.g., Downtown Farmers Market"
+                        className="w-full bg-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-truck-orange"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-1">Address (optional)</label>
+                      <input
+                        type="text"
+                        value={newLocationAddress}
+                        onChange={e => setNewLocationAddress(e.target.value)}
+                        placeholder="123 Main St"
+                        className="w-full bg-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-truck-orange"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-3 mt-6">
+                    <button
+                      onClick={() => { setShowAddLocation(false); setNewLocationName(''); setNewLocationAddress(''); }}
+                      className="flex-1 bg-gray-700 hover:bg-gray-600 py-3 rounded-lg"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => createLocation(false)}
+                      disabled={!newLocationName.trim()}
+                      className="flex-1 bg-gray-600 hover:bg-gray-500 py-3 rounded-lg disabled:opacity-50"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={() => createLocation(true)}
+                      disabled={!newLocationName.trim() || gettingGPS}
+                      className="flex-1 bg-truck-orange hover:bg-orange-600 py-3 rounded-lg disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {gettingGPS ? '📡...' : '📍 + GPS'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Current Location */}
+            {activeLocation && (
+              <div className="bg-truck-orange/20 border-2 border-truck-orange rounded-xl p-4 mb-6">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-2xl">📍</span>
+                  <span className="text-lg font-bold">Currently At:</span>
+                </div>
+                <div className="text-2xl font-bold">{activeLocation.name}</div>
+                {activeLocation.address && (
+                  <div className="text-gray-300">{activeLocation.address}</div>
+                )}
+                {activeLocation.latitude && (
+                  <div className="text-sm text-gray-400 mt-1">
+                    GPS: {activeLocation.latitude.toFixed(4)}, {activeLocation.longitude?.toFixed(4)}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Saved Locations */}
+            <h3 className="text-lg font-bold mb-3">Saved Locations</h3>
+            <div className="space-y-3">
+              {locations.map(loc => (
+                <div
+                  key={loc.id}
+                  className={`flex items-center justify-between rounded-xl p-4 ${
+                    loc.is_active ? 'bg-truck-orange/10 border border-truck-orange' : 'bg-gray-800'
+                  }`}
+                >
+                  <div className="flex-1">
+                    <div className="font-medium flex items-center gap-2">
+                      {loc.name}
+                      {loc.is_active && <span className="text-xs bg-truck-orange text-white px-2 py-0.5 rounded">ACTIVE</span>}
+                    </div>
+                    {loc.address && <div className="text-sm text-gray-400">{loc.address}</div>}
+                    {loc.latitude && (
+                      <div className="text-xs text-gray-500">GPS: {loc.latitude.toFixed(4)}, {loc.longitude?.toFixed(4)}</div>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    {!loc.is_active && (
+                      <button
+                        onClick={() => activateLocation(loc.id)}
+                        className="bg-truck-green hover:bg-green-600 px-4 py-2 rounded-lg text-sm font-medium"
+                      >
+                        Check In
+                      </button>
+                    )}
+                    <button
+                      onClick={() => deleteLocation(loc.id)}
+                      className="bg-red-500/20 hover:bg-red-500/30 text-red-400 px-3 py-2 rounded-lg text-sm"
+                    >
+                      🗑️
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {locations.length === 0 && (
+                <div className="text-center text-gray-500 py-8">
+                  No locations saved yet. Add your first spot!
+                </div>
+              )}
+            </div>
+
+            {/* Tips */}
+            <div className="mt-8 bg-gray-800 rounded-xl p-4">
+              <h4 className="font-bold mb-2">💡 Pro Tips</h4>
+              <ul className="text-sm text-gray-400 space-y-1">
+                <li>• Check in when you arrive to track sales by location</li>
+                <li>• Use GPS to save exact coordinates for events</li>
+                <li>• Review location sales in the Sales report</li>
+              </ul>
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Bottom Navigation */}
@@ -1065,6 +1313,7 @@ function App() {
           { id: 'kitchen', icon: '👨‍🍳', label: 'Kitchen' },
           { id: 'queue', icon: '📺', label: 'Queue' },
           { id: 'sales', icon: '📊', label: 'Sales' },
+          { id: 'locations', icon: '📍', label: 'Location' },
           { id: 'settings', icon: '⚙️', label: 'Menu' },
         ].map(tab => (
           <button
