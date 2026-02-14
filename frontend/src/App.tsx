@@ -225,6 +225,14 @@ function App() {
   } | null>(null)
   const [loyaltyDiscount, setLoyaltyDiscount] = useState(0)
   
+  // Goals state
+  const [dailyGoal, setDailyGoal] = useState<{
+    targets: {revenue: number, orders: number},
+    current: {revenue: number, orders: number},
+    progress: {revenue_percent: number, orders_percent: number},
+    status: string
+  } | null>(null)
+  
   // Catering state
   const [cateringOrders, setCateringOrders] = useState<any[]>([])
   const [showCateringForm, setShowCateringForm] = useState(false)
@@ -382,6 +390,17 @@ function App() {
       setWeatherRecs(data)
     } catch (err) {
       console.error('Failed to fetch weather recs:', err)
+    }
+  }, [])
+
+  // Fetch daily goals
+  const fetchDailyGoal = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/goals/today`)
+      const data = await res.json()
+      setDailyGoal(data)
+    } catch (err) {
+      console.error('Failed to fetch goals:', err)
     }
   }, [])
 
@@ -635,6 +654,7 @@ function App() {
     if (view === 'sales') {
       fetchDailySales()
       fetchHourlySales()
+      fetchDailyGoal()
     }
     if (view === 'kitchen') {
       fetchKitchenOrders()
@@ -1863,6 +1883,50 @@ function App() {
         {view === 'sales' && dailySales && (
           <div className="p-4 overflow-y-auto h-full">
             <h2 className="text-2xl font-bold mb-6">📊 Daily Sales - {dailySales.date}</h2>
+            
+            {/* Daily Goal Progress */}
+            {dailyGoal && (
+              <div className={`mb-6 p-4 rounded-xl ${
+                dailyGoal.status === 'goal_reached' 
+                  ? 'bg-green-900/30 border border-green-500' 
+                  : 'bg-gray-800'
+              }`}>
+                <div className="flex justify-between items-center mb-3">
+                  <h3 className="font-bold">🎯 Daily Goal</h3>
+                  {dailyGoal.status === 'goal_reached' && (
+                    <span className="bg-green-500 text-white px-3 py-1 rounded-full text-sm font-bold">
+                      🎉 Goal Reached!
+                    </span>
+                  )}
+                </div>
+                <div className="space-y-3">
+                  <div>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span>Revenue: ${dailyGoal.current.revenue.toFixed(2)} / ${dailyGoal.targets.revenue.toFixed(2)}</span>
+                      <span className="font-bold">{dailyGoal.progress.revenue_percent}%</span>
+                    </div>
+                    <div className="h-3 bg-gray-700 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full transition-all ${dailyGoal.progress.revenue_percent >= 100 ? 'bg-green-500' : 'bg-truck-orange'}`}
+                        style={{ width: `${Math.min(100, dailyGoal.progress.revenue_percent)}%` }}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span>Orders: {dailyGoal.current.orders} / {dailyGoal.targets.orders}</span>
+                      <span className="font-bold">{dailyGoal.progress.orders_percent}%</span>
+                    </div>
+                    <div className="h-3 bg-gray-700 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full transition-all ${dailyGoal.progress.orders_percent >= 100 ? 'bg-green-500' : 'bg-truck-yellow'}`}
+                        style={{ width: `${Math.min(100, dailyGoal.progress.orders_percent)}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
             
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
               <div className="bg-gray-800 rounded-xl p-4">

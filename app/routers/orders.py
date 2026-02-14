@@ -215,3 +215,67 @@ def cancel_order(order_id: int, db: Session = Depends(get_db)):
     order.status = "cancelled"
     db.commit()
     return {"message": "Order cancelled"}
+
+@router.patch("/{order_id}/modify")
+def modify_order(order_id: int, notes: str = None, customer_name: str = None, db: Session = Depends(get_db)):
+    """Modify order details before payment."""
+    order = db.query(Order).filter(Order.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    if order.is_paid:
+        raise HTTPException(status_code=400, detail="Cannot modify a paid order")
+    
+    if notes is not None:
+        order.notes = notes
+    if customer_name is not None:
+        order.customer_name = customer_name
+    
+    order.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(order)
+    return build_order_response(order)
+
+@router.post("/{order_id}/add-item")
+def add_item_to_order(order_id: int, menu_item_id: int, quantity: int = 1, db: Session = Depends(get_db)):
+    """Add item to existing order (before payment)."""
+    order = db.query(Order).filter(Order.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    if order.is_paid:
+        raise HTTPException(status_code=400, detail="Cannot modify a paid order")
+    
+    menu_item = db.query(MenuItem).filter(MenuItem.id == menu_item_id).first()
+    if not menu_item:
+        raise HTTPException(status_code=400, detail="Menu item not found")
+    
+    # Check if item already in order
+    existing = None
+    for oi in order.items:
+        if oi.menu_item_id == menu_item_id:
+            existing = oi
+            break
+    
+    if existing:
+        existing.quantity += quantity
+        existing.subtotal = existing.unit_price * existing.quantity
+    else:
+        order_item = OrderItem(
+            order_id=order.id,
+            menu_item_id=menu_item.id,
+            quantity=quantity,
+            unit_price=menu_item.price,
+            subtotal=menu_item.price * quantity
+        )
+        db.add(order_item)
+    
+    # Recalculate totals
+    subtotal = sum(oi.subtotal for oi in order.items)
+    order.tax = round(subtotal * TAX_RATE, 2)
+    order.total = round(subtotal + order.tax, 2)
+    order.updated_at = datetime.utcnow()
+    
+    db.commit()
+    db.refresh(order)
+    return build_order_response(order)
