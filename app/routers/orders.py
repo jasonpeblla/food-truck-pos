@@ -39,6 +39,8 @@ def build_order_response(order: Order) -> dict:
         "id": order.id,
         "order_number": order.order_number,
         "customer_name": order.customer_name,
+        "customer_phone": order.customer_phone or "",
+        "notify_sms": order.notify_sms or False,
         "status": order.status,
         "total": order.total,
         "tax": order.tax,
@@ -109,6 +111,8 @@ def create_order(order_data: OrderCreate, db: Session = Depends(get_db)):
     order = Order(
         order_number=get_next_order_number(db),
         customer_name=order_data.customer_name,
+        customer_phone=order_data.customer_phone,
+        notify_sms=order_data.notify_sms,
         notes=order_data.notes,
         location_id=order_data.location_id
     )

@@ -21,6 +21,8 @@ class OrderItemResponse(BaseModel):
 
 class OrderCreate(BaseModel):
     customer_name: str = ""
+    customer_phone: str = ""
+    notify_sms: bool = False
     items: List[OrderItemCreate]
     notes: str = ""
     location_id: Optional[int] = None
@@ -32,6 +34,8 @@ class OrderResponse(BaseModel):
     id: int
     order_number: int
     customer_name: str
+    customer_phone: str = ""
+    notify_sms: bool = False
     status: str
     total: float
     tax: float

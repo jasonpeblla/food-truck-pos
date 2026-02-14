@@ -183,6 +183,8 @@ function App() {
   const [selectedCategory, setSelectedCategory] = useState<string>('')
   const [cart, setCart] = useState<CartItem[]>([])
   const [customerName, setCustomerName] = useState('')
+  const [customerPhone, setCustomerPhone] = useState('')
+  const [notifySms, setNotifySms] = useState(false)
   const [orderNotes, setOrderNotes] = useState('')
   const [lastOrder, setLastOrder] = useState<Order | null>(null)
   const [quickActionItem, setQuickActionItem] = useState<MenuItem | null>(null)
@@ -648,6 +650,8 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           customer_name: customerName,
+          customer_phone: customerPhone,
+          notify_sms: notifySms,
           notes: orderNotes,
           items: cart.map(c => ({
             menu_item_id: c.menu_item.id,
@@ -658,9 +662,11 @@ function App() {
       
       if (res.ok) {
         const order = await res.json()
-        showNotification(`Order #${order.order_number} created!`)
+        showNotification(`Order #${order.order_number} created!${notifySms ? ' (SMS when ready)' : ''}`)
         setCart([])
         setCustomerName('')
+        setCustomerPhone('')
+        setNotifySms(false)
         setOrderNotes('')
         fetchOrders()
         fetchQueue()
@@ -1172,6 +1178,28 @@ function App() {
                   onChange={e => setCustomerName(e.target.value)}
                   className="w-full bg-gray-700 rounded-lg px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-truck-orange"
                 />
+                <div className="flex gap-2">
+                  <input
+                    type="tel"
+                    placeholder="Phone for SMS (optional)"
+                    value={customerPhone}
+                    onChange={e => setCustomerPhone(e.target.value)}
+                    className="flex-1 bg-gray-700 rounded-lg px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-truck-orange"
+                  />
+                  {customerPhone && (
+                    <button
+                      type="button"
+                      onClick={() => setNotifySms(!notifySms)}
+                      className={`px-3 py-2 rounded-lg font-medium text-sm whitespace-nowrap ${
+                        notifySms 
+                          ? 'bg-truck-green text-white' 
+                          : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                      }`}
+                    >
+                      📱 {notifySms ? 'SMS On' : 'SMS Off'}
+                    </button>
+                  )}
+                </div>
                 <textarea
                   placeholder="Special requests / notes..."
                   value={orderNotes}

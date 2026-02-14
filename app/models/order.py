@@ -9,6 +9,8 @@ class Order(Base):
     id = Column(Integer, primary_key=True, index=True)
     order_number = Column(Integer, nullable=False)  # Daily order number (resets each day)
     customer_name = Column(String, default="")
+    customer_phone = Column(String, default="")  # For SMS notifications
+    notify_sms = Column(Boolean, default=False)  # Whether to send SMS when ready
     status = Column(String, default="pending")  # pending, preparing, ready, completed, cancelled
     total = Column(Float, default=0.0)
     tax = Column(Float, default=0.0)
