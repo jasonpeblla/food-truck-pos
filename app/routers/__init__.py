@@ -15,6 +15,7 @@ from .refunds import router as refunds_router
 from .settings import router as settings_router
 from .feedback import router as feedback_router
 from .prep import router as prep_router
+from .weather import router as weather_router
 
 __all__ = [
     "menu_router",
@@ -33,5 +34,6 @@ __all__ = [
     "refunds_router",
     "settings_router",
     "feedback_router",
-    "prep_router"
+    "prep_router",
+    "weather_router"
 ]

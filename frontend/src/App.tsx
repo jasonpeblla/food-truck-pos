@@ -196,6 +196,7 @@ function App() {
   const [stockAlerts, setStockAlerts] = useState<StockAlert[]>([])
   const [prepChecklist, setPrepChecklist] = useState<PrepChecklist | null>(null)
   const [customerDisplayMode, setCustomerDisplayMode] = useState(false)
+  const [weatherRecs, setWeatherRecs] = useState<{weather_type: string, description: string, recommended_items: {id: number, name: string, emoji: string}[]} | null>(null)
   const [loading, setLoading] = useState(false)
   const [waitEstimate, setWaitEstimate] = useState<{orders_ahead: number, estimated_minutes: number, busy_level: string} | null>(null)
   const [notification, setNotification] = useState('')
@@ -349,6 +350,17 @@ function App() {
       setWaitEstimate(data)
     } catch (err) {
       console.error('Failed to fetch wait estimate:', err)
+    }
+  }, [])
+
+  // Fetch weather recommendations
+  const fetchWeatherRecs = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/weather/recommendations`)
+      const data = await res.json()
+      setWeatherRecs(data)
+    } catch (err) {
+      console.error('Failed to fetch weather recs:', err)
     }
   }, [])
 
@@ -540,6 +552,7 @@ function App() {
     fetchShifts()
     fetchStockAlerts()
     fetchWaitEstimate()
+    fetchWeatherRecs()
     
     const interval = setInterval(() => {
       fetchOrders()
@@ -1135,6 +1148,28 @@ function App() {
                 >
                   💪 Burrito Special
                 </button>
+                {/* Weather Recommendations */}
+                {weatherRecs && weatherRecs.recommended_items.length > 0 && (
+                  <>
+                    <div className="flex items-center px-2 text-gray-500 text-xs">|</div>
+                    <span className="px-2 py-2 text-xs text-gray-400 whitespace-nowrap">
+                      {weatherRecs.weather_type === 'hot' ? '☀️' : weatherRecs.weather_type === 'cold' ? '❄️' : weatherRecs.weather_type === 'rainy' ? '🌧️' : '🌤️'}
+                      {' '}Suggested:
+                    </span>
+                    {weatherRecs.recommended_items.slice(0, 3).map(item => (
+                      <button
+                        key={item.id}
+                        onClick={() => {
+                          const menuItem = menu.find(m => m.id === item.id)
+                          if (menuItem) addToCart(menuItem)
+                        }}
+                        className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-full whitespace-nowrap text-sm"
+                      >
+                        {item.emoji} {item.name}
+                      </button>
+                    ))}
+                  </>
+                )}
               </div>
 
               {/* Category tabs */}
