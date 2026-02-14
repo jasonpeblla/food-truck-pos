@@ -492,7 +492,7 @@ function App() {
   const cartTotal = cartSubtotal + cartTax
 
   // Submit order
-  const submitOrder = async () => {
+  const submitOrder = async (payNow: boolean = false) => {
     if (cart.length === 0) return
     
     setLoading(true)
@@ -516,6 +516,11 @@ function App() {
         setCustomerName('')
         fetchOrders()
         fetchQueue()
+        
+        // If pay now, open payment modal
+        if (payNow) {
+          setShowPayment(order)
+        }
       }
     } catch (err) {
       showNotification('Failed to create order', 'alert')
@@ -976,13 +981,22 @@ function App() {
                     <span className="text-truck-yellow">${cartTotal.toFixed(2)}</span>
                   </div>
                 </div>
-                <button
-                  onClick={submitOrder}
-                  disabled={cart.length === 0 || loading}
-                  className="w-full bg-truck-green hover:bg-green-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-4 rounded-xl transition-all active:scale-95"
-                >
-                  {loading ? 'Processing...' : 'Submit Order'}
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => submitOrder(false)}
+                    disabled={cart.length === 0 || loading}
+                    className="flex-1 bg-truck-green hover:bg-green-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-4 rounded-xl transition-all active:scale-95"
+                  >
+                    {loading ? '...' : 'Order'}
+                  </button>
+                  <button
+                    onClick={() => submitOrder(true)}
+                    disabled={cart.length === 0 || loading}
+                    className="flex-1 bg-truck-yellow hover:bg-yellow-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-gray-900 font-bold py-4 rounded-xl transition-all active:scale-95"
+                  >
+                    {loading ? '...' : '💰 Pay Now'}
+                  </button>
+                </div>
                 {cart.length > 0 && (
                   <button
                     onClick={() => setCart([])}
