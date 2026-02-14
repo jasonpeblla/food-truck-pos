@@ -140,6 +140,7 @@ function App() {
   const [cart, setCart] = useState<CartItem[]>([])
   const [customerName, setCustomerName] = useState('')
   const [orderNotes, setOrderNotes] = useState('')
+  const [lastOrder, setLastOrder] = useState<Order | null>(null)
   const [orders, setOrders] = useState<Order[]>([])
   const [queue, setQueue] = useState<QueueOrder[]>([])
   const [kitchenOrders, setKitchenOrders] = useState<KitchenOrder[]>([])
@@ -220,6 +221,12 @@ function App() {
         playSound('ding')
       }
       prevReadyCountRef.current = readyCount
+      
+      // Track last completed order for "repeat" feature
+      const completed = data.filter((o: Order) => o.status === 'completed' && o.is_paid)
+      if (completed.length > 0) {
+        setLastOrder(completed[0])
+      }
       
       setOrders(data)
     } catch (err) {
@@ -486,6 +493,32 @@ function App() {
     items.forEach(item => addToCart(item))
     if (items.length > 0) {
       showNotification(`${name} added!`)
+    }
+  }
+
+  // Repeat last order
+  const repeatLastOrder = () => {
+    if (!lastOrder) return
+    
+    // Clear current cart first
+    setCart([])
+    
+    // Add each item from last order
+    let addedCount = 0
+    lastOrder.items.forEach(item => {
+      const menuItem = menu.find(m => m.id === item.menu_item_id)
+      if (menuItem && menuItem.is_available) {
+        for (let i = 0; i < item.quantity; i++) {
+          addToCart(menuItem)
+        }
+        addedCount++
+      }
+    })
+    
+    if (addedCount > 0) {
+      showNotification('Last order items added!')
+    } else {
+      showNotification('Items from last order unavailable', 'alert')
     }
   }
 
@@ -872,6 +905,14 @@ function App() {
             <div className="flex-1 flex flex-col p-4 overflow-hidden">
               {/* Quick Combos */}
               <div className="flex gap-2 mb-3 overflow-x-auto no-scrollbar pb-2">
+                {lastOrder && (
+                  <button
+                    onClick={repeatLastOrder}
+                    className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full whitespace-nowrap font-medium"
+                  >
+                    🔄 Repeat Last
+                  </button>
+                )}
                 <button
                   onClick={() => addCombo('Taco Combo', [1, 2, 14])}
                   className="px-4 py-2 bg-gradient-to-r from-orange-500 to-red-500 rounded-full whitespace-nowrap font-medium"
