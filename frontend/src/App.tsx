@@ -213,6 +213,11 @@ function App() {
   const [submittingFeedback, setSubmittingFeedback] = useState(false)
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false)
   
+  // Promo code state
+  const [promoCode, setPromoCode] = useState('')
+  const [promoDiscount, setPromoDiscount] = useState(0)
+  const [promoMessage, setPromoMessage] = useState('')
+  
   // Loyalty state
   const [loyaltyCustomer, setLoyaltyCustomer] = useState<{
     id: number, phone: string, name: string, points: number, 
@@ -726,6 +731,28 @@ function App() {
     }
   }
 
+  // Validate promo code
+  const validatePromo = async () => {
+    if (!promoCode.trim()) return
+    try {
+      const res = await fetch(`${API_BASE}/promos/validate?code=${promoCode}&order_total=${cartTotalBeforeDiscount}`, {
+        method: 'POST'
+      })
+      const data = await res.json()
+      if (data.valid) {
+        setPromoDiscount(data.calculated_discount)
+        setPromoMessage(data.message)
+        playSound('success')
+      } else {
+        setPromoDiscount(0)
+        setPromoMessage(data.message)
+        playSound('alert')
+      }
+    } catch (err) {
+      setPromoMessage('Failed to validate code')
+    }
+  }
+
   // Redeem loyalty points
   const redeemLoyalty = async () => {
     if (!loyaltyCustomer?.can_redeem) return
@@ -789,7 +816,8 @@ function App() {
   const cartSubtotal = cart.reduce((sum, c) => sum + c.menu_item.price * c.quantity, 0)
   const cartTax = cartSubtotal * 0.0875
   const cartTotalBeforeDiscount = cartSubtotal + cartTax
-  const cartTotal = Math.max(0, cartTotalBeforeDiscount - loyaltyDiscount)
+  const totalDiscounts = loyaltyDiscount + promoDiscount
+  const cartTotal = Math.max(0, cartTotalBeforeDiscount - totalDiscounts)
 
   // Submit order
   const submitOrder = async (payNow: boolean = false) => {
@@ -835,6 +863,9 @@ function App() {
         setOrderNotes('')
         setLoyaltyCustomer(null)
         setLoyaltyDiscount(0)
+        setPromoCode('')
+        setPromoDiscount(0)
+        setPromoMessage('')
         fetchOrders()
         fetchQueue()
         
@@ -1505,6 +1536,32 @@ function App() {
                       <span>⭐ Loyalty Reward</span>
                       <span>-${loyaltyDiscount.toFixed(2)}</span>
                     </div>
+                  )}
+                  {promoDiscount > 0 && (
+                    <div className="flex justify-between text-green-400">
+                      <span>🎟️ Promo: {promoCode.toUpperCase()}</span>
+                      <span>-${promoDiscount.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {/* Promo Code Input */}
+                  {cart.length > 0 && !promoDiscount && (
+                    <div className="flex gap-2 pt-2">
+                      <input
+                        placeholder="Promo code"
+                        value={promoCode}
+                        onChange={e => setPromoCode(e.target.value)}
+                        className="flex-1 bg-gray-700 rounded px-3 py-1 text-sm"
+                      />
+                      <button
+                        onClick={validatePromo}
+                        className="bg-gray-600 hover:bg-gray-500 px-3 py-1 rounded text-sm"
+                      >
+                        Apply
+                      </button>
+                    </div>
+                  )}
+                  {promoMessage && !promoDiscount && (
+                    <div className="text-xs text-red-400">{promoMessage}</div>
                   )}
                   <div className="flex justify-between text-lg font-bold pt-2 border-t border-gray-600">
                     <span>Total</span>

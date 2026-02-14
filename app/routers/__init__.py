@@ -18,6 +18,7 @@ from .prep import router as prep_router
 from .weather import router as weather_router
 from .customers import router as customers_router
 from .catering import router as catering_router
+from .promos import router as promos_router
 
 __all__ = [
     "menu_router",
@@ -39,5 +40,6 @@ __all__ = [
     "prep_router",
     "weather_router",
     "customers_router",
-    "catering_router"
+    "catering_router",
+    "promos_router"
 ]
