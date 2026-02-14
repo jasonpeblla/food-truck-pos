@@ -6,6 +6,8 @@ from .ingredients import router as ingredients_router
 from .sales import router as sales_router
 from .modifiers import router as modifiers_router
 from .kitchen import router as kitchen_router
+from .shifts import router as shifts_router
+from .receipts import router as receipts_router
 
 __all__ = [
     "menu_router",
@@ -15,5 +17,7 @@ __all__ = [
     "ingredients_router",
     "sales_router",
     "modifiers_router",
-    "kitchen_router"
+    "kitchen_router",
+    "shifts_router",
+    "receipts_router"
 ]
