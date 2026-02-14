@@ -7,6 +7,7 @@ from .modifier import ModifierGroup, Modifier
 from .shift import Shift
 from .discount import Discount
 from .feedback import Feedback
+from .customer import Customer
 
 __all__ = [
     "MenuItem",
@@ -20,5 +21,6 @@ __all__ = [
     "Modifier",
     "Shift",
     "Discount",
-    "Feedback"
+    "Feedback",
+    "Customer"
 ]

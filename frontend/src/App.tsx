@@ -213,6 +213,13 @@ function App() {
   const [submittingFeedback, setSubmittingFeedback] = useState(false)
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false)
   
+  // Loyalty state
+  const [loyaltyCustomer, setLoyaltyCustomer] = useState<{
+    id: number, phone: string, name: string, points: number, 
+    can_redeem: boolean, reward_value: number, points_to_next_reward: number
+  } | null>(null)
+  const [loyaltyDiscount, setLoyaltyDiscount] = useState(0)
+  
   // Location state
   const [locations, setLocations] = useState<Location[]>([])
   const [activeLocation, setActiveLocation] = useState<Location | null>(null)
@@ -626,6 +633,68 @@ function App() {
     })
   }
 
+  // Lookup loyalty customer by phone
+  const lookupLoyalty = async (phone: string) => {
+    if (phone.replace(/\D/g, '').length < 10) {
+      setLoyaltyCustomer(null)
+      return
+    }
+    try {
+      const res = await fetch(`${API_BASE}/customers/lookup/${phone}`)
+      if (res.ok) {
+        const data = await res.json()
+        setLoyaltyCustomer(data)
+      } else {
+        setLoyaltyCustomer(null)
+      }
+    } catch (err) {
+      setLoyaltyCustomer(null)
+    }
+  }
+
+  // Register new loyalty customer
+  const registerLoyalty = async () => {
+    if (!customerPhone || customerPhone.replace(/\D/g, '').length < 10) return
+    try {
+      const res = await fetch(`${API_BASE}/customers/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: customerPhone, name: customerName })
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setLoyaltyCustomer(data)
+        showNotification('Loyalty member registered!')
+      }
+    } catch (err) {
+      showNotification('Failed to register', 'alert')
+    }
+  }
+
+  // Redeem loyalty points
+  const redeemLoyalty = async () => {
+    if (!loyaltyCustomer?.can_redeem) return
+    try {
+      const res = await fetch(`${API_BASE}/customers/${loyaltyCustomer.id}/redeem`, {
+        method: 'POST'
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setLoyaltyDiscount(data.reward_applied)
+        setLoyaltyCustomer({
+          ...loyaltyCustomer,
+          points: data.remaining_points,
+          can_redeem: data.remaining_points >= 50,
+          reward_value: data.remaining_points >= 50 ? 5.00 : 0,
+          points_to_next_reward: Math.max(0, 50 - data.remaining_points)
+        })
+        showNotification(`$${data.reward_applied} reward applied!`)
+      }
+    } catch (err) {
+      showNotification('Failed to redeem', 'alert')
+    }
+  }
+
   // Quick combos
   const addCombo = (name: string, itemIds: number[]) => {
     const items = menu.filter(m => itemIds.includes(m.id) && m.is_available)
@@ -664,7 +733,8 @@ function App() {
   // Calculate cart total
   const cartSubtotal = cart.reduce((sum, c) => sum + c.menu_item.price * c.quantity, 0)
   const cartTax = cartSubtotal * 0.0875
-  const cartTotal = cartSubtotal + cartTax
+  const cartTotalBeforeDiscount = cartSubtotal + cartTax
+  const cartTotal = Math.max(0, cartTotalBeforeDiscount - loyaltyDiscount)
 
   // Submit order
   const submitOrder = async (payNow: boolean = false) => {
@@ -689,12 +759,27 @@ function App() {
       
       if (res.ok) {
         const order = await res.json()
-        showNotification(`Order #${order.order_number} created!${notifySms ? ' (SMS when ready)' : ''}`)
+        
+        // Add loyalty points if customer is registered
+        if (loyaltyCustomer) {
+          try {
+            await fetch(`${API_BASE}/customers/${loyaltyCustomer.id}/add-points?amount=${order.total}`, {
+              method: 'POST'
+            })
+          } catch (e) {
+            // Points will be added next time
+          }
+        }
+        
+        const pointsMsg = loyaltyCustomer ? ` (+${Math.floor(order.total)} pts)` : ''
+        showNotification(`Order #${order.order_number} created!${notifySms ? ' (SMS when ready)' : ''}${pointsMsg}`)
         setCart([])
         setCustomerName('')
         setCustomerPhone('')
         setNotifySms(false)
         setOrderNotes('')
+        setLoyaltyCustomer(null)
+        setLoyaltyDiscount(0)
         fetchOrders()
         fetchQueue()
         
@@ -1230,9 +1315,12 @@ function App() {
                 <div className="flex gap-2">
                   <input
                     type="tel"
-                    placeholder="Phone for SMS (optional)"
+                    placeholder="Phone (loyalty + SMS)"
                     value={customerPhone}
-                    onChange={e => setCustomerPhone(e.target.value)}
+                    onChange={e => {
+                      setCustomerPhone(e.target.value)
+                      lookupLoyalty(e.target.value)
+                    }}
                     className="flex-1 bg-gray-700 rounded-lg px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-truck-orange"
                   />
                   {customerPhone && (
@@ -1249,6 +1337,44 @@ function App() {
                     </button>
                   )}
                 </div>
+                {/* Loyalty Status */}
+                {customerPhone && customerPhone.replace(/\D/g, '').length >= 10 && (
+                  <div className={`px-3 py-2 rounded-lg text-sm ${
+                    loyaltyCustomer 
+                      ? 'bg-purple-900/50 border border-purple-500' 
+                      : 'bg-gray-700'
+                  }`}>
+                    {loyaltyCustomer ? (
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-purple-300">⭐ {loyaltyCustomer.points} pts</span>
+                          {loyaltyCustomer.can_redeem ? (
+                            <button
+                              onClick={redeemLoyalty}
+                              className="ml-2 px-2 py-1 bg-truck-green text-white rounded text-xs font-medium"
+                            >
+                              Redeem ${loyaltyCustomer.reward_value}!
+                            </button>
+                          ) : (
+                            <span className="ml-2 text-xs text-gray-400">
+                              ({loyaltyCustomer.points_to_next_reward} to reward)
+                            </span>
+                          )}
+                        </div>
+                        {loyaltyCustomer.name && (
+                          <span className="text-gray-400 text-xs">{loyaltyCustomer.name}</span>
+                        )}
+                      </div>
+                    ) : (
+                      <button
+                        onClick={registerLoyalty}
+                        className="w-full text-center text-gray-300 hover:text-white"
+                      >
+                        ⭐ Join loyalty program
+                      </button>
+                    )}
+                  </div>
+                )}
                 <textarea
                   placeholder="Special requests / notes..."
                   value={orderNotes}
@@ -1319,6 +1445,12 @@ function App() {
                     <span className="text-gray-400">Tax (8.75%)</span>
                     <span>${cartTax.toFixed(2)}</span>
                   </div>
+                  {loyaltyDiscount > 0 && (
+                    <div className="flex justify-between text-green-400">
+                      <span>⭐ Loyalty Reward</span>
+                      <span>-${loyaltyDiscount.toFixed(2)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-lg font-bold pt-2 border-t border-gray-600">
                     <span>Total</span>
                     <span className="text-truck-yellow">${cartTotal.toFixed(2)}</span>

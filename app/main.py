@@ -21,7 +21,8 @@ from app.routers import (
     settings_router,
     feedback_router,
     prep_router,
-    weather_router
+    weather_router,
+    customers_router
 )
 from app.models import MenuItem, Location
 
@@ -104,6 +105,7 @@ app.include_router(settings_router)
 app.include_router(feedback_router)
 app.include_router(prep_router)
 app.include_router(weather_router)
+app.include_router(customers_router)
 
 @app.get("/")
 def root():
