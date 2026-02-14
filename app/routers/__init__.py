@@ -14,6 +14,7 @@ from .export import router as export_router
 from .refunds import router as refunds_router
 from .settings import router as settings_router
 from .feedback import router as feedback_router
+from .prep import router as prep_router
 
 __all__ = [
     "menu_router",
@@ -31,5 +32,6 @@ __all__ = [
     "export_router",
     "refunds_router",
     "settings_router",
-    "feedback_router"
+    "feedback_router",
+    "prep_router"
 ]

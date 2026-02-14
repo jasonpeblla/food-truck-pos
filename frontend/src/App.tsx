@@ -117,7 +117,29 @@ interface StockAlert {
   severity: 'critical' | 'warning'
 }
 
-type View = 'pos' | 'orders' | 'queue' | 'kitchen' | 'sales' | 'settings' | 'locations' | 'shifts' | 'inventory'
+interface PrepItem {
+  id: number
+  category: string
+  item: string
+  checked: boolean
+}
+
+interface PrepCategory {
+  name: string
+  items: PrepItem[]
+  completed: number
+  total: number
+}
+
+interface PrepChecklist {
+  date: string
+  categories: PrepCategory[]
+  total: number
+  completed: number
+  progress_percent: number
+}
+
+type View = 'pos' | 'orders' | 'queue' | 'kitchen' | 'sales' | 'settings' | 'locations' | 'shifts' | 'inventory' | 'prep'
 
 // Sound effects (using Web Audio API)
 const playSound = (type: 'success' | 'alert' | 'ding') => {
@@ -169,6 +191,7 @@ function App() {
   const [dailySales, setDailySales] = useState<DailySales | null>(null)
   const [hourlySales, setHourlySales] = useState<HourlySales | null>(null)
   const [stockAlerts, setStockAlerts] = useState<StockAlert[]>([])
+  const [prepChecklist, setPrepChecklist] = useState<PrepChecklist | null>(null)
   const [loading, setLoading] = useState(false)
   const [notification, setNotification] = useState('')
   const [showPayment, setShowPayment] = useState<Order | null>(null)
@@ -312,6 +335,39 @@ function App() {
       console.error('Failed to fetch stock alerts:', err)
     }
   }, [])
+
+  // Fetch prep checklist
+  const fetchPrepChecklist = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/prep`)
+      const data = await res.json()
+      setPrepChecklist(data)
+    } catch (err) {
+      console.error('Failed to fetch prep checklist:', err)
+    }
+  }, [])
+
+  // Toggle prep item
+  const togglePrepItem = async (itemId: number) => {
+    try {
+      await fetch(`${API_BASE}/prep/${itemId}/toggle`, { method: 'POST' })
+      fetchPrepChecklist()
+      playSound('success')
+    } catch (err) {
+      console.error('Failed to toggle prep item:', err)
+    }
+  }
+
+  // Reset prep checklist
+  const resetPrepChecklist = async () => {
+    try {
+      await fetch(`${API_BASE}/prep/reset`, { method: 'POST' })
+      fetchPrepChecklist()
+      showNotification('Checklist reset')
+    } catch (err) {
+      showNotification('Failed to reset', 'alert')
+    }
+  }
 
   // Fetch locations
   const fetchLocations = useCallback(async () => {
@@ -494,7 +550,10 @@ function App() {
     if (view === 'shifts') {
       fetchShifts()
     }
-  }, [view, fetchDailySales, fetchHourlySales, fetchKitchenOrders, fetchLocations, fetchShifts])
+    if (view === 'prep') {
+      fetchPrepChecklist()
+    }
+  }, [view, fetchDailySales, fetchHourlySales, fetchKitchenOrders, fetchLocations, fetchShifts, fetchPrepChecklist])
 
   // Show notification
   const showNotification = (msg: string, type: 'success' | 'alert' = 'success') => {
@@ -1824,6 +1883,95 @@ function App() {
           </div>
         )}
 
+        {/* Prep Checklist View */}
+        {view === 'prep' && prepChecklist && (
+          <div className="p-4 overflow-y-auto h-full">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold">📋 Daily Prep Checklist</h2>
+              <button
+                onClick={resetPrepChecklist}
+                className="text-sm bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded-lg"
+              >
+                Reset All
+              </button>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="bg-gray-800 rounded-xl p-4 mb-6">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-lg font-bold">Progress</span>
+                <span className={`text-2xl font-bold ${
+                  prepChecklist.progress_percent === 100 ? 'text-truck-green' : 'text-truck-yellow'
+                }`}>
+                  {prepChecklist.progress_percent}%
+                </span>
+              </div>
+              <div className="h-4 bg-gray-700 rounded-full overflow-hidden">
+                <div 
+                  className={`h-full transition-all duration-300 ${
+                    prepChecklist.progress_percent === 100 ? 'bg-truck-green' : 'bg-truck-orange'
+                  }`}
+                  style={{ width: `${prepChecklist.progress_percent}%` }}
+                />
+              </div>
+              <div className="text-sm text-gray-400 mt-2">
+                {prepChecklist.completed} of {prepChecklist.total} items completed
+              </div>
+            </div>
+
+            {/* Checklist Categories */}
+            <div className="space-y-6">
+              {prepChecklist.categories.map((category) => (
+                <div key={category.name} className="bg-gray-800 rounded-xl p-4">
+                  <div className="flex justify-between items-center mb-3">
+                    <h3 className="text-lg font-bold">{category.name}</h3>
+                    <span className={`text-sm px-2 py-1 rounded ${
+                      category.completed === category.total 
+                        ? 'bg-truck-green/20 text-truck-green' 
+                        : 'bg-gray-700 text-gray-400'
+                    }`}>
+                      {category.completed}/{category.total}
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    {category.items.map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => togglePrepItem(item.id)}
+                        className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all ${
+                          item.checked 
+                            ? 'bg-truck-green/20 text-truck-green' 
+                            : 'bg-gray-700 hover:bg-gray-600'
+                        }`}
+                      >
+                        <span className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
+                          item.checked 
+                            ? 'border-truck-green bg-truck-green text-white' 
+                            : 'border-gray-500'
+                        }`}>
+                          {item.checked && '✓'}
+                        </span>
+                        <span className={item.checked ? 'line-through opacity-60' : ''}>
+                          {item.item}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* All Complete Message */}
+            {prepChecklist.progress_percent === 100 && (
+              <div className="mt-6 bg-truck-green/20 border border-truck-green rounded-xl p-6 text-center">
+                <div className="text-4xl mb-2">🎉</div>
+                <div className="text-xl font-bold text-truck-green">Ready to Roll!</div>
+                <p className="text-gray-400 mt-1">All prep items completed</p>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Inventory View */}
         {view === 'inventory' && (
           <div className="p-4 overflow-y-auto h-full">
@@ -1903,6 +2051,7 @@ function App() {
           { id: 'queue', icon: '📺', label: 'Queue' },
           { id: 'sales', icon: '📊', label: 'Sales' },
           { id: 'shifts', icon: '⏱️', label: 'Shift' },
+          { id: 'prep', icon: '📋', label: 'Prep' },
           { id: 'inventory', icon: '📦', label: 'Stock', badge: stockAlerts.length || undefined },
           { id: 'locations', icon: '📍', label: 'Location' },
           { id: 'settings', icon: '⚙️', label: 'Menu' },
