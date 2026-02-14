@@ -185,6 +185,7 @@ function App() {
   const [customerName, setCustomerName] = useState('')
   const [orderNotes, setOrderNotes] = useState('')
   const [lastOrder, setLastOrder] = useState<Order | null>(null)
+  const [quickActionItem, setQuickActionItem] = useState<MenuItem | null>(null)
   const [orders, setOrders] = useState<Order[]>([])
   const [queue, setQueue] = useState<QueueOrder[]>([])
   const [kitchenOrders, setKitchenOrders] = useState<KitchenOrder[]>([])
@@ -1026,6 +1027,64 @@ function App() {
         </div>
       )}
 
+      {/* Quick Action Modal (Long press on menu item) */}
+      {quickActionItem && (
+        <div 
+          className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
+          onClick={() => setQuickActionItem(null)}
+        >
+          <div 
+            className="bg-gray-800 rounded-2xl p-6 max-w-sm w-full"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="text-center mb-4">
+              <div className="text-5xl mb-2">{quickActionItem.emoji}</div>
+              <div className="text-xl font-bold">{quickActionItem.name}</div>
+              <div className="text-gray-400">${quickActionItem.price.toFixed(2)}</div>
+            </div>
+            
+            <div className="space-y-3">
+              <button
+                onClick={() => {
+                  toggleAvailability(quickActionItem.id)
+                  setQuickActionItem(null)
+                }}
+                className={`w-full py-4 rounded-xl font-bold text-lg ${
+                  quickActionItem.is_available
+                    ? 'bg-red-500 hover:bg-red-600 text-white'
+                    : 'bg-truck-green hover:bg-green-600 text-white'
+                }`}
+              >
+                {quickActionItem.is_available ? '🚫 Mark Sold Out' : '✅ Mark Available'}
+              </button>
+              
+              {quickActionItem.is_available && (
+                <button
+                  onClick={() => {
+                    addToCart(quickActionItem)
+                    setQuickActionItem(null)
+                  }}
+                  className="w-full py-4 rounded-xl font-bold text-lg bg-truck-orange hover:bg-orange-600 text-white"
+                >
+                  🛒 Add to Cart
+                </button>
+              )}
+              
+              <button
+                onClick={() => setQuickActionItem(null)}
+                className="w-full py-3 text-gray-400 hover:text-white"
+              >
+                Cancel
+              </button>
+            </div>
+            
+            <div className="mt-4 text-center text-xs text-gray-500">
+              Long-press any item for quick actions
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Content */}
       <main className="flex-1 overflow-hidden">
         {/* POS View */}
@@ -1080,9 +1139,15 @@ function App() {
                   {filteredMenu.map(item => (
                     <button
                       key={item.id}
-                      onClick={() => addToCart(item)}
-                      disabled={!item.is_available}
-                      className={`menu-item-btn ${!item.is_available ? 'sold-out' : ''}`}
+                      onClick={() => item.is_available && addToCart(item)}
+                      onContextMenu={(e) => { e.preventDefault(); setQuickActionItem(item); }}
+                      onTouchStart={(e) => {
+                        const timer = setTimeout(() => setQuickActionItem(item), 500)
+                        const cancel = () => clearTimeout(timer)
+                        e.currentTarget.addEventListener('touchend', cancel, { once: true })
+                        e.currentTarget.addEventListener('touchmove', cancel, { once: true })
+                      }}
+                      className={`menu-item-btn relative ${!item.is_available ? 'sold-out' : ''}`}
                     >
                       <div className="text-3xl mb-2">{item.emoji}</div>
                       <div className="font-semibold text-sm truncate">{item.name}</div>
