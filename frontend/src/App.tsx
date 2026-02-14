@@ -193,6 +193,7 @@ function App() {
   const [hourlySales, setHourlySales] = useState<HourlySales | null>(null)
   const [stockAlerts, setStockAlerts] = useState<StockAlert[]>([])
   const [prepChecklist, setPrepChecklist] = useState<PrepChecklist | null>(null)
+  const [customerDisplayMode, setCustomerDisplayMode] = useState(false)
   const [loading, setLoading] = useState(false)
   const [notification, setNotification] = useState('')
   const [showPayment, setShowPayment] = useState<Order | null>(null)
@@ -1347,48 +1348,114 @@ function App() {
 
         {/* Queue Display View */}
         {view === 'queue' && (
-          <div className="p-8 h-full bg-gray-900">
-            <h2 className="text-3xl font-bold text-center mb-8">🍽️ Order Status</h2>
-            <div className="grid gap-6 md:grid-cols-2 max-w-4xl mx-auto">
+          <div className={`h-full bg-gray-900 ${customerDisplayMode ? 'fixed inset-0 z-50' : 'p-8'}`}>
+            {/* Header with toggle */}
+            <div className={`flex justify-between items-center ${customerDisplayMode ? 'p-4 bg-gray-800' : 'mb-8'}`}>
+              <h2 className={`font-bold text-center flex-1 ${customerDisplayMode ? 'text-4xl' : 'text-3xl'}`}>
+                🍽️ Order Status
+              </h2>
+              <button
+                onClick={() => {
+                  if (!customerDisplayMode) {
+                    document.documentElement.requestFullscreen?.()
+                  } else {
+                    document.exitFullscreen?.()
+                  }
+                  setCustomerDisplayMode(!customerDisplayMode)
+                }}
+                className={`px-4 py-2 rounded-lg font-medium ${
+                  customerDisplayMode 
+                    ? 'bg-red-500 hover:bg-red-600 text-white' 
+                    : 'bg-truck-orange hover:bg-orange-600 text-white'
+                }`}
+              >
+                {customerDisplayMode ? '✕ Exit' : '📺 Customer View'}
+              </button>
+            </div>
+
+            <div className={`grid gap-6 md:grid-cols-2 ${customerDisplayMode ? 'p-8 h-full' : 'max-w-4xl mx-auto'}`}>
               {/* Preparing */}
-              <div>
-                <h3 className="text-xl font-bold mb-4 text-blue-400">🔥 Preparing</h3>
-                <div className="space-y-3">
+              <div className={customerDisplayMode ? 'h-full overflow-hidden' : ''}>
+                <h3 className={`font-bold mb-4 text-blue-400 ${customerDisplayMode ? 'text-3xl' : 'text-xl'}`}>
+                  🔥 Preparing
+                </h3>
+                <div className={`space-y-3 ${customerDisplayMode ? 'overflow-y-auto' : ''}`}>
                   {queue.filter(q => q.status === 'preparing').map(q => (
-                    <div key={q.order_number} className="bg-blue-900/50 border border-blue-500 rounded-xl p-4">
-                      <div className="text-3xl font-bold">#{q.order_number}</div>
-                      <div className="text-gray-300">{q.customer_name}</div>
+                    <div 
+                      key={q.order_number} 
+                      className={`bg-blue-900/50 border-2 border-blue-500 rounded-xl ${
+                        customerDisplayMode ? 'p-6' : 'p-4'
+                      }`}
+                    >
+                      <div className={`font-bold ${customerDisplayMode ? 'text-6xl' : 'text-3xl'}`}>
+                        #{q.order_number}
+                      </div>
+                      <div className={`text-gray-300 ${customerDisplayMode ? 'text-2xl mt-2' : ''}`}>
+                        {q.customer_name}
+                      </div>
                     </div>
                   ))}
+                  {queue.filter(q => q.status === 'preparing').length === 0 && (
+                    <div className={`text-gray-600 ${customerDisplayMode ? 'text-xl' : ''}`}>
+                      No orders preparing
+                    </div>
+                  )}
                 </div>
               </div>
 
               {/* Ready */}
-              <div>
-                <h3 className="text-xl font-bold mb-4 text-green-400">✅ Ready for Pickup!</h3>
-                <div className="space-y-3">
-                  {queue.filter(q => q.status === 'ready' || q.status === 'pending').map(q => (
+              <div className={customerDisplayMode ? 'h-full overflow-hidden' : ''}>
+                <h3 className={`font-bold mb-4 text-green-400 ${customerDisplayMode ? 'text-3xl' : 'text-xl'}`}>
+                  ✅ Ready for Pickup!
+                </h3>
+                <div className={`space-y-3 ${customerDisplayMode ? 'overflow-y-auto' : ''}`}>
+                  {queue.filter(q => q.status === 'ready').map(q => (
                     <div
                       key={q.order_number}
-                      className={`rounded-xl p-4 ${
-                        q.status === 'ready'
-                          ? 'bg-green-900/50 border border-green-500 animate-pulse'
-                          : 'bg-gray-800 border border-gray-600'
+                      className={`bg-green-900/50 border-2 border-green-500 rounded-xl animate-pulse ${
+                        customerDisplayMode ? 'p-6' : 'p-4'
                       }`}
+                    >
+                      <div className={`font-bold text-green-300 ${customerDisplayMode ? 'text-6xl' : 'text-3xl'}`}>
+                        #{q.order_number}
+                      </div>
+                      <div className={`text-green-200 ${customerDisplayMode ? 'text-2xl mt-2' : ''}`}>
+                        {q.customer_name}
+                      </div>
+                    </div>
+                  ))}
+                  
+                  {/* Pending orders (only in regular mode) */}
+                  {!customerDisplayMode && queue.filter(q => q.status === 'pending').map(q => (
+                    <div
+                      key={q.order_number}
+                      className="bg-gray-800 border border-gray-600 rounded-xl p-4"
                     >
                       <div className="text-3xl font-bold">#{q.order_number}</div>
                       <div className="text-gray-300">{q.customer_name}</div>
-                      {q.status === 'pending' && (
-                        <div className="text-sm text-yellow-400 mt-1">~{q.wait_time_minutes} min</div>
-                      )}
+                      <div className="text-sm text-yellow-400 mt-1">~{q.wait_time_minutes} min</div>
                     </div>
                   ))}
+                  
+                  {queue.filter(q => q.status === 'ready').length === 0 && (
+                    <div className={`text-gray-600 ${customerDisplayMode ? 'text-xl' : ''}`}>
+                      No orders ready
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
+
             {queue.length === 0 && (
-              <div className="text-center text-gray-500 py-12">
-                No active orders
+              <div className={`text-center text-gray-500 ${customerDisplayMode ? 'text-3xl pt-20' : 'py-12'}`}>
+                {customerDisplayMode ? '🍽️ Order Here!' : 'No active orders'}
+              </div>
+            )}
+
+            {/* Time display in customer mode */}
+            {customerDisplayMode && (
+              <div className="fixed bottom-4 left-0 right-0 text-center text-gray-500 text-xl">
+                {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </div>
             )}
           </div>
