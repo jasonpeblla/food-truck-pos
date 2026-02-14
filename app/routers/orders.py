@@ -66,6 +66,29 @@ def get_orders(status: str = None, today_only: bool = True, db: Session = Depend
     orders = query.order_by(Order.created_at.desc()).all()
     return [build_order_response(o) for o in orders]
 
+@router.get("/wait-estimate")
+def get_wait_estimate(db: Session = Depends(get_db)):
+    """Get estimated wait time for a new order placed now."""
+    orders = db.query(Order).filter(
+        Order.status.in_(["pending", "preparing"])
+    ).order_by(Order.created_at).all()
+    
+    # Calculate total prep time for all orders ahead
+    total_seconds = 0
+    for order in orders:
+        for oi in order.items:
+            total_seconds += (oi.menu_item.prep_time_seconds or 180) * oi.quantity
+    
+    # Food trucks typically have 1-2 people cooking, so divide by parallel capacity
+    wait_minutes = max(1, total_seconds // 120)  # Assume ~2 min per item average
+    orders_ahead = len(orders)
+    
+    return {
+        "orders_ahead": orders_ahead,
+        "estimated_minutes": wait_minutes,
+        "busy_level": "slow" if orders_ahead < 3 else "moderate" if orders_ahead < 7 else "busy"
+    }
+
 @router.get("/queue", response_model=List[QueueOrderResponse])
 def get_queue(db: Session = Depends(get_db)):
     """Get customer queue display (pending and preparing orders)."""
@@ -74,6 +97,8 @@ def get_queue(db: Session = Depends(get_db)):
     ).order_by(Order.created_at).all()
     
     queue = []
+    cumulative_wait = 0  # Track cumulative wait time
+    
     for order in orders:
         # Calculate estimated wait time based on position and prep time
         items_summary = ", ".join([
@@ -82,9 +107,16 @@ def get_queue(db: Session = Depends(get_db)):
         if len(order.items) > 3:
             items_summary += f" +{len(order.items) - 3} more"
         
-        # Simple wait time estimation
-        total_prep = sum(oi.menu_item.prep_time_seconds * oi.quantity for oi in order.items)
-        wait_minutes = max(1, total_prep // 60)
+        # Order's own prep time
+        order_prep = sum((oi.menu_item.prep_time_seconds or 180) * oi.quantity for oi in order.items)
+        
+        # For preparing orders, reduce estimate based on elapsed time
+        if order.status == "preparing":
+            elapsed = (datetime.utcnow() - order.updated_at).total_seconds()
+            order_prep = max(60, order_prep - int(elapsed))
+        
+        cumulative_wait += order_prep
+        wait_minutes = max(1, cumulative_wait // 60)
         
         queue.append({
             "order_number": order.order_number,

@@ -197,6 +197,7 @@ function App() {
   const [prepChecklist, setPrepChecklist] = useState<PrepChecklist | null>(null)
   const [customerDisplayMode, setCustomerDisplayMode] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [waitEstimate, setWaitEstimate] = useState<{orders_ahead: number, estimated_minutes: number, busy_level: string} | null>(null)
   const [notification, setNotification] = useState('')
   const [showPayment, setShowPayment] = useState<Order | null>(null)
   const [tip, setTip] = useState(0)
@@ -337,6 +338,17 @@ function App() {
       setStockAlerts(data)
     } catch (err) {
       console.error('Failed to fetch stock alerts:', err)
+    }
+  }, [])
+
+  // Fetch wait estimate
+  const fetchWaitEstimate = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/orders/wait-estimate`)
+      const data = await res.json()
+      setWaitEstimate(data)
+    } catch (err) {
+      console.error('Failed to fetch wait estimate:', err)
     }
   }, [])
 
@@ -527,18 +539,20 @@ function App() {
     fetchLocations()
     fetchShifts()
     fetchStockAlerts()
+    fetchWaitEstimate()
     
     const interval = setInterval(() => {
       fetchOrders()
       fetchQueue()
       fetchStockAlerts()
+      fetchWaitEstimate()
       if (view === 'kitchen') {
         fetchKitchenOrders()
       }
     }, 3000)
     
     return () => clearInterval(interval)
-  }, [fetchMenu, fetchOrders, fetchQueue, fetchKitchenOrders, fetchLocations, fetchShifts, fetchStockAlerts, view])
+  }, [fetchMenu, fetchOrders, fetchQueue, fetchKitchenOrders, fetchLocations, fetchShifts, fetchStockAlerts, fetchWaitEstimate, view])
 
   useEffect(() => {
     if (view === 'sales') {
@@ -1244,6 +1258,23 @@ function App() {
               </div>
 
               <div className="p-4 border-t border-gray-700 bg-gray-800">
+                {/* Wait Time Estimate */}
+                {waitEstimate && cart.length > 0 && (
+                  <div className={`mb-3 px-3 py-2 rounded-lg text-center text-sm font-medium ${
+                    waitEstimate.busy_level === 'busy' 
+                      ? 'bg-red-900/50 text-red-300' 
+                      : waitEstimate.busy_level === 'moderate'
+                        ? 'bg-yellow-900/50 text-yellow-300'
+                        : 'bg-green-900/50 text-green-300'
+                  }`}>
+                    ⏱️ Est. wait: ~{waitEstimate.estimated_minutes} min
+                    {waitEstimate.orders_ahead > 0 && (
+                      <span className="text-xs opacity-75 ml-2">
+                        ({waitEstimate.orders_ahead} order{waitEstimate.orders_ahead > 1 ? 's' : ''} ahead)
+                      </span>
+                    )}
+                  </div>
+                )}
                 <div className="space-y-1 mb-4 text-sm">
                   <div className="flex justify-between">
                     <span className="text-gray-400">Subtotal</span>
