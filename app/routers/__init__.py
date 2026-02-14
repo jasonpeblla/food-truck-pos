@@ -8,6 +8,7 @@ from .modifiers import router as modifiers_router
 from .kitchen import router as kitchen_router
 from .shifts import router as shifts_router
 from .receipts import router as receipts_router
+from .history import router as history_router
 
 __all__ = [
     "menu_router",
@@ -19,5 +20,6 @@ __all__ = [
     "modifiers_router",
     "kitchen_router",
     "shifts_router",
-    "receipts_router"
+    "receipts_router",
+    "history_router"
 ]
