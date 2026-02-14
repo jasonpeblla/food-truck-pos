@@ -27,6 +27,15 @@ def get_categories(db: Session = Depends(get_db)):
     categories = db.query(MenuItem.category).distinct().all()
     return [c[0] for c in categories]
 
+@router.get("/search")
+def search_menu(q: str, db: Session = Depends(get_db)):
+    """Search menu items by name or description."""
+    items = db.query(MenuItem).filter(
+        (MenuItem.name.ilike(f"%{q}%")) | 
+        (MenuItem.description.ilike(f"%{q}%"))
+    ).all()
+    return items
+
 @router.get("/{item_id}", response_model=MenuItemResponse)
 def get_menu_item(item_id: int, db: Session = Depends(get_db)):
     """Get a specific menu item."""
