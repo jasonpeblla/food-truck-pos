@@ -5,6 +5,7 @@ from .location import Location
 from .ingredient import Ingredient, MenuItemIngredient
 from .modifier import ModifierGroup, Modifier
 from .shift import Shift
+from .discount import Discount
 
 __all__ = [
     "MenuItem",
@@ -16,5 +17,6 @@ __all__ = [
     "MenuItemIngredient",
     "ModifierGroup",
     "Modifier",
-    "Shift"
+    "Shift",
+    "Discount"
 ]
