@@ -10,6 +10,7 @@ from .shifts import router as shifts_router
 from .receipts import router as receipts_router
 from .history import router as history_router
 from .discounts import router as discounts_router
+from .export import router as export_router
 
 __all__ = [
     "menu_router",
@@ -23,5 +24,6 @@ __all__ = [
     "shifts_router",
     "receipts_router",
     "history_router",
-    "discounts_router"
+    "discounts_router",
+    "export_router"
 ]
