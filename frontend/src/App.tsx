@@ -121,6 +121,14 @@ function App() {
   const [cashTendered, setCashTendered] = useState('')
   const [isOnline, setIsOnline] = useState(navigator.onLine)
   
+  // Feedback state
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false)
+  const [feedbackType, setFeedbackType] = useState<"bug" | "feature">("bug")
+  const [feedbackMessage, setFeedbackMessage] = useState("")
+  const [feedbackEmail, setFeedbackEmail] = useState("")
+  const [submittingFeedback, setSubmittingFeedback] = useState(false)
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false)
+  
   const prevReadyCountRef = useRef(0)
 
   // Online/offline detection
@@ -376,6 +384,33 @@ function App() {
     }
   }
 
+  // Submit feedback
+  const submitFeedback = async () => {
+    if (!feedbackMessage.trim()) return
+    setSubmittingFeedback(true)
+    try {
+      await fetch(`${API_BASE}/feedback/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: feedbackType,
+          message: feedbackMessage.trim(),
+          email: feedbackEmail.trim() || null
+        })
+      })
+      setFeedbackSubmitted(true)
+      setTimeout(() => {
+        setShowFeedbackModal(false)
+        setFeedbackSubmitted(false)
+        setFeedbackMessage("")
+        setFeedbackEmail("")
+      }, 2000)
+    } catch (e) {
+      console.error("Feedback submission failed:", e)
+    }
+    setSubmittingFeedback(false)
+  }
+
   // Toggle item availability
   const toggleAvailability = async (itemId: number) => {
     try {
@@ -415,6 +450,100 @@ function App() {
       {notification && (
         <div className="fixed top-16 left-1/2 -translate-x-1/2 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-pulse">
           {notification}
+        </div>
+      )}
+
+      {/* Floating Feedback Button */}
+      <button
+        onClick={() => setShowFeedbackModal(true)}
+        className="fixed bottom-24 right-4 w-14 h-14 bg-truck-orange hover:bg-orange-600 rounded-full shadow-lg flex items-center justify-center text-2xl z-40 transition-transform hover:scale-110"
+        title="Send Feedback"
+      >
+        💬
+      </button>
+
+      {/* Feedback Modal */}
+      {showFeedbackModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-2xl shadow-2xl p-6 max-w-lg w-full">
+            {feedbackSubmitted ? (
+              <div className="text-center py-8">
+                <div className="text-5xl mb-4">✅</div>
+                <h2 className="text-2xl font-bold text-green-400">Thank you!</h2>
+                <p className="text-gray-400 mt-2">Your feedback has been submitted.</p>
+              </div>
+            ) : (
+              <>
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-xl font-bold">Send Feedback</h2>
+                  <button onClick={() => setShowFeedbackModal(false)} className="text-gray-400 hover:text-white text-2xl">&times;</button>
+                </div>
+                
+                <div className="flex gap-2 mb-4">
+                  <button
+                    onClick={() => setFeedbackType("bug")}
+                    className={`flex-1 py-3 rounded-lg font-semibold transition ${
+                      feedbackType === "bug" ? "bg-red-600 text-white" : "bg-gray-700 hover:bg-gray-600"
+                    }`}
+                  >
+                    🐛 Bug Report
+                  </button>
+                  <button
+                    onClick={() => setFeedbackType("feature")}
+                    className={`flex-1 py-3 rounded-lg font-semibold transition ${
+                      feedbackType === "feature" ? "bg-truck-orange text-white" : "bg-gray-700 hover:bg-gray-600"
+                    }`}
+                  >
+                    💡 Feature Request
+                  </button>
+                </div>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-300 mb-1">
+                      {feedbackType === "bug" ? "What went wrong?" : "What would you like?"}
+                    </label>
+                    <textarea
+                      placeholder={feedbackType === "bug" 
+                        ? "Describe the issue..."
+                        : "Describe the feature..."}
+                      value={feedbackMessage}
+                      onChange={e => setFeedbackMessage(e.target.value)}
+                      rows={4}
+                      className="w-full p-3 bg-gray-700 border-2 border-gray-600 rounded-lg focus:border-truck-orange focus:outline-none resize-none text-white placeholder-gray-400"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-300 mb-1">Email (optional)</label>
+                    <input
+                      type="email"
+                      placeholder="your@email.com"
+                      value={feedbackEmail}
+                      onChange={e => setFeedbackEmail(e.target.value)}
+                      className="w-full p-3 bg-gray-700 border-2 border-gray-600 rounded-lg focus:border-truck-orange focus:outline-none text-white placeholder-gray-400"
+                    />
+                  </div>
+                </div>
+                
+                <div className="flex gap-3 mt-6">
+                  <button
+                    onClick={() => setShowFeedbackModal(false)}
+                    className="flex-1 py-3 bg-gray-700 rounded-lg font-semibold hover:bg-gray-600"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={submitFeedback}
+                    disabled={submittingFeedback || !feedbackMessage.trim()}
+                    className="flex-1 py-3 bg-truck-orange text-white rounded-lg font-semibold hover:bg-orange-600 disabled:bg-gray-600 disabled:cursor-not-allowed"
+                  >
+                    {submittingFeedback ? "Sending..." : "Submit"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
 
