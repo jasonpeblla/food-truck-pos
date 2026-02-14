@@ -28,6 +28,7 @@ interface Order {
   status: string
   total: number
   tax: number
+  notes: string
   is_paid: boolean
   items: OrderItem[]
   created_at: string
@@ -52,6 +53,7 @@ interface KitchenOrder {
   customer_name: string
   status: string
   elapsed_seconds: number
+  notes: string
   items: { name: string; quantity: number; customizations: string }[]
 }
 
@@ -137,6 +139,7 @@ function App() {
   const [selectedCategory, setSelectedCategory] = useState<string>('')
   const [cart, setCart] = useState<CartItem[]>([])
   const [customerName, setCustomerName] = useState('')
+  const [orderNotes, setOrderNotes] = useState('')
   const [orders, setOrders] = useState<Order[]>([])
   const [queue, setQueue] = useState<QueueOrder[]>([])
   const [kitchenOrders, setKitchenOrders] = useState<KitchenOrder[]>([])
@@ -502,6 +505,7 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           customer_name: customerName,
+          notes: orderNotes,
           items: cart.map(c => ({
             menu_item_id: c.menu_item.id,
             quantity: c.quantity
@@ -514,6 +518,7 @@ function App() {
         showNotification(`Order #${order.order_number} created!`)
         setCart([])
         setCustomerName('')
+        setOrderNotes('')
         fetchOrders()
         fetchQueue()
         
@@ -922,13 +927,20 @@ function App() {
 
             {/* Cart Section */}
             <div className="lg:w-80 bg-gray-800 border-t lg:border-t-0 lg:border-l border-gray-700 flex flex-col">
-              <div className="p-4 border-b border-gray-700">
+              <div className="p-4 border-b border-gray-700 space-y-2">
                 <input
                   type="text"
                   placeholder="Customer name (optional)"
                   value={customerName}
                   onChange={e => setCustomerName(e.target.value)}
                   className="w-full bg-gray-700 rounded-lg px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-truck-orange"
+                />
+                <textarea
+                  placeholder="Special requests / notes..."
+                  value={orderNotes}
+                  onChange={e => setOrderNotes(e.target.value)}
+                  rows={2}
+                  className="w-full bg-gray-700 rounded-lg px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-truck-orange resize-none text-sm"
                 />
               </div>
 
@@ -1036,6 +1048,12 @@ function App() {
                       </div>
                     ))}
                   </div>
+
+                  {order.notes && (
+                    <div className="bg-yellow-900/30 border border-yellow-600 rounded-lg px-3 py-2 mb-3 text-sm text-yellow-200">
+                      📝 {order.notes}
+                    </div>
+                  )}
 
                   <div className="flex justify-between font-bold border-t border-gray-600 pt-2 mb-3">
                     <span>Total</span>
@@ -1165,7 +1183,13 @@ function App() {
                     </div>
                   </div>
                   
-                  <div className="text-sm text-gray-300 mb-3">{order.customer_name}</div>
+                  <div className="text-sm text-gray-300 mb-2">{order.customer_name}</div>
+                  
+                  {order.notes && (
+                    <div className="bg-red-900/50 border border-red-500 rounded-lg px-2 py-1 mb-3 text-sm">
+                      📝 {order.notes}
+                    </div>
+                  )}
                   
                   <div className="space-y-2">
                     {order.items.map((item, idx) => (

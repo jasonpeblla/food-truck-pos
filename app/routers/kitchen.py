@@ -32,6 +32,7 @@ async def broadcast_orders():
                 "customer_name": order.customer_name or f"Order #{order.order_number}",
                 "status": order.status,
                 "elapsed_seconds": int(elapsed),
+                "notes": order.notes or "",
                 "items": [
                     {
                         "name": oi.menu_item.name,
@@ -104,6 +105,7 @@ def get_kitchen_orders(db: Session = Depends(get_db)):
             "customer_name": order.customer_name or f"Order #{order.order_number}",
             "status": order.status,
             "elapsed_seconds": int(elapsed),
+            "notes": order.notes or "",
             "items": [
                 {
                     "name": oi.menu_item.name,
