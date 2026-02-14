@@ -95,6 +95,19 @@ interface DailySales {
   average_order_value: number
 }
 
+interface HourlyData {
+  hour: number
+  time_label: string
+  orders: number
+  revenue: number
+}
+
+interface HourlySales {
+  date: string
+  hourly_data: HourlyData[]
+  peak_hour: number | null
+}
+
 type View = 'pos' | 'orders' | 'queue' | 'kitchen' | 'sales' | 'settings' | 'locations' | 'shifts'
 
 // Sound effects (using Web Audio API)
@@ -145,6 +158,7 @@ function App() {
   const [queue, setQueue] = useState<QueueOrder[]>([])
   const [kitchenOrders, setKitchenOrders] = useState<KitchenOrder[]>([])
   const [dailySales, setDailySales] = useState<DailySales | null>(null)
+  const [hourlySales, setHourlySales] = useState<HourlySales | null>(null)
   const [loading, setLoading] = useState(false)
   const [notification, setNotification] = useState('')
   const [showPayment, setShowPayment] = useState<Order | null>(null)
@@ -264,6 +278,17 @@ function App() {
       setDailySales(data)
     } catch (err) {
       console.error('Failed to fetch sales:', err)
+    }
+  }, [])
+
+  // Fetch hourly sales
+  const fetchHourlySales = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/sales/hourly`)
+      const data = await res.json()
+      setHourlySales(data)
+    } catch (err) {
+      console.error('Failed to fetch hourly sales:', err)
     }
   }, [])
 
@@ -435,6 +460,7 @@ function App() {
   useEffect(() => {
     if (view === 'sales') {
       fetchDailySales()
+      fetchHourlySales()
     }
     if (view === 'kitchen') {
       fetchKitchenOrders()
@@ -445,7 +471,7 @@ function App() {
     if (view === 'shifts') {
       fetchShifts()
     }
-  }, [view, fetchDailySales, fetchKitchenOrders, fetchLocations, fetchShifts])
+  }, [view, fetchDailySales, fetchHourlySales, fetchKitchenOrders, fetchLocations, fetchShifts])
 
   // Show notification
   const showNotification = (msg: string, type: 'success' | 'alert' = 'success') => {
@@ -1293,6 +1319,52 @@ function App() {
                 <div className="text-2xl font-bold">${dailySales.average_order_value.toFixed(2)}</div>
               </div>
             </div>
+
+            {/* Peak Hours Chart */}
+            {hourlySales && hourlySales.hourly_data.length > 0 && (
+              <div className="bg-gray-800 rounded-xl p-4 mb-8">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-bold">⏰ Orders by Hour</h3>
+                  {hourlySales.peak_hour !== null && (
+                    <span className="bg-truck-orange text-white px-3 py-1 rounded-full text-sm font-bold">
+                      🔥 Peak: {hourlySales.peak_hour}:00
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-end gap-1 h-32">
+                  {hourlySales.hourly_data.map((hour) => {
+                    const maxOrders = Math.max(...hourlySales.hourly_data.map(h => h.orders), 1)
+                    const heightPercent = (hour.orders / maxOrders) * 100
+                    const isPeak = hour.hour === hourlySales.peak_hour && hour.orders > 0
+                    return (
+                      <div
+                        key={hour.hour}
+                        className="flex-1 flex flex-col items-center group cursor-pointer"
+                      >
+                        <div className="text-xs text-gray-400 mb-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {hour.orders}
+                        </div>
+                        <div
+                          className={`w-full rounded-t transition-all ${
+                            isPeak ? 'bg-truck-orange' : hour.orders > 0 ? 'bg-truck-green' : 'bg-gray-700'
+                          } group-hover:opacity-80`}
+                          style={{ height: `${Math.max(heightPercent, 4)}%` }}
+                        />
+                        <div className="text-xs text-gray-500 mt-1 hidden sm:block">
+                          {hour.hour % 3 === 0 ? `${hour.hour}` : ''}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+                <div className="flex justify-between text-xs text-gray-500 mt-2">
+                  <span>6am</span>
+                  <span>12pm</span>
+                  <span>6pm</span>
+                  <span>10pm</span>
+                </div>
+              </div>
+            )}
 
             <div className="bg-gray-800 rounded-xl p-4">
               <h3 className="text-lg font-bold mb-4">🏆 Top Items</h3>
