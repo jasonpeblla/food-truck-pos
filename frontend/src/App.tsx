@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 
 const API_BASE = '/api'
 
@@ -46,6 +46,15 @@ interface QueueOrder {
   wait_time_minutes: number
 }
 
+interface KitchenOrder {
+  id: number
+  order_number: number
+  customer_name: string
+  status: string
+  elapsed_seconds: number
+  items: { name: string; quantity: number; customizations: string }[]
+}
+
 interface DailySales {
   date: string
   total_orders: number
@@ -54,9 +63,44 @@ interface DailySales {
   card_total: number
   total_tips: number
   top_items: { name: string; quantity: number; revenue: number }[]
+  average_order_value: number
 }
 
-type View = 'pos' | 'orders' | 'queue' | 'sales' | 'settings'
+type View = 'pos' | 'orders' | 'queue' | 'kitchen' | 'sales' | 'settings'
+
+// Sound effects (using Web Audio API)
+const playSound = (type: 'success' | 'alert' | 'ding') => {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    
+    if (type === 'success') {
+      osc.frequency.value = 880
+      gain.gain.value = 0.1
+    } else if (type === 'alert') {
+      osc.frequency.value = 440
+      gain.gain.value = 0.15
+    } else {
+      osc.frequency.value = 660
+      gain.gain.value = 0.1
+    }
+    
+    osc.start()
+    osc.stop(ctx.currentTime + 0.15)
+  } catch (e) {
+    // Audio not available
+  }
+}
+
+// Format elapsed time
+const formatElapsed = (seconds: number) => {
+  const mins = Math.floor(seconds / 60)
+  const secs = seconds % 60
+  return `${mins}:${secs.toString().padStart(2, '0')}`
+}
 
 function App() {
   // State
@@ -68,9 +112,28 @@ function App() {
   const [customerName, setCustomerName] = useState('')
   const [orders, setOrders] = useState<Order[]>([])
   const [queue, setQueue] = useState<QueueOrder[]>([])
+  const [kitchenOrders, setKitchenOrders] = useState<KitchenOrder[]>([])
   const [dailySales, setDailySales] = useState<DailySales | null>(null)
   const [loading, setLoading] = useState(false)
   const [notification, setNotification] = useState('')
+  const [showPayment, setShowPayment] = useState<Order | null>(null)
+  const [tip, setTip] = useState(0)
+  const [cashTendered, setCashTendered] = useState('')
+  const [isOnline, setIsOnline] = useState(navigator.onLine)
+  
+  const prevReadyCountRef = useRef(0)
+
+  // Online/offline detection
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true)
+    const handleOffline = () => setIsOnline(false)
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
 
   // Fetch menu
   const fetchMenu = useCallback(async () => {
@@ -94,6 +157,14 @@ function App() {
     try {
       const res = await fetch(`${API_BASE}/orders?today_only=true`)
       const data = await res.json()
+      
+      // Check for new ready orders
+      const readyCount = data.filter((o: Order) => o.status === 'ready').length
+      if (readyCount > prevReadyCountRef.current && prevReadyCountRef.current > 0) {
+        playSound('ding')
+      }
+      prevReadyCountRef.current = readyCount
+      
       setOrders(data)
     } catch (err) {
       console.error('Failed to fetch orders:', err)
@@ -108,6 +179,17 @@ function App() {
       setQueue(data)
     } catch (err) {
       console.error('Failed to fetch queue:', err)
+    }
+  }, [])
+
+  // Fetch kitchen orders
+  const fetchKitchenOrders = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/kitchen/orders`)
+      const data = await res.json()
+      setKitchenOrders(data)
+    } catch (err) {
+      console.error('Failed to fetch kitchen orders:', err)
     }
   }, [])
 
@@ -131,20 +213,27 @@ function App() {
     const interval = setInterval(() => {
       fetchOrders()
       fetchQueue()
-    }, 5000)
+      if (view === 'kitchen') {
+        fetchKitchenOrders()
+      }
+    }, 3000)
     
     return () => clearInterval(interval)
-  }, [fetchMenu, fetchOrders, fetchQueue])
+  }, [fetchMenu, fetchOrders, fetchQueue, fetchKitchenOrders, view])
 
   useEffect(() => {
     if (view === 'sales') {
       fetchDailySales()
     }
-  }, [view, fetchDailySales])
+    if (view === 'kitchen') {
+      fetchKitchenOrders()
+    }
+  }, [view, fetchDailySales, fetchKitchenOrders])
 
   // Show notification
-  const showNotification = (msg: string) => {
+  const showNotification = (msg: string, type: 'success' | 'alert' = 'success') => {
     setNotification(msg)
+    playSound(type)
     setTimeout(() => setNotification(''), 2000)
   }
 
@@ -163,6 +252,7 @@ function App() {
       }
       return [...prev, { menu_item: item, quantity: 1 }]
     })
+    playSound('success')
   }
 
   // Remove from cart
@@ -178,6 +268,15 @@ function App() {
       }
       return prev.filter(c => c.menu_item.id !== itemId)
     })
+  }
+
+  // Quick combos
+  const addCombo = (name: string, itemIds: number[]) => {
+    const items = menu.filter(m => itemIds.includes(m.id) && m.is_available)
+    items.forEach(item => addToCart(item))
+    if (items.length > 0) {
+      showNotification(`${name} added!`)
+    }
   }
 
   // Calculate cart total
@@ -212,7 +311,7 @@ function App() {
         fetchQueue()
       }
     } catch (err) {
-      console.error('Failed to create order:', err)
+      showNotification('Failed to create order', 'alert')
     }
     setLoading(false)
   }
@@ -227,8 +326,21 @@ function App() {
       })
       fetchOrders()
       fetchQueue()
+      fetchKitchenOrders()
     } catch (err) {
       console.error('Failed to update status:', err)
+    }
+  }
+
+  // Kitchen bump
+  const bumpOrder = async (orderId: number) => {
+    try {
+      await fetch(`${API_BASE}/kitchen/bump/${orderId}`, { method: 'POST' })
+      fetchKitchenOrders()
+      fetchOrders()
+      playSound('success')
+    } catch (err) {
+      console.error('Failed to bump order:', err)
     }
   }
 
@@ -237,6 +349,9 @@ function App() {
     const order = orders.find(o => o.id === orderId)
     if (!order) return
     
+    const totalWithTip = order.total + tip
+    const cash = method === 'cash' && cashTendered ? parseFloat(cashTendered) : totalWithTip
+    
     try {
       await fetch(`${API_BASE}/payments`, {
         method: 'POST',
@@ -244,13 +359,20 @@ function App() {
         body: JSON.stringify({
           order_id: orderId,
           amount: order.total,
-          method
+          method,
+          tip,
+          cash_tendered: method === 'cash' ? cash : null
         })
       })
-      showNotification(`Payment received!`)
+      
+      const change = method === 'cash' ? cash - totalWithTip : 0
+      showNotification(change > 0 ? `Payment received! Change: $${change.toFixed(2)}` : 'Payment received!')
+      setShowPayment(null)
+      setTip(0)
+      setCashTendered('')
       fetchOrders()
     } catch (err) {
-      console.error('Failed to process payment:', err)
+      showNotification('Payment failed', 'alert')
     }
   }
 
@@ -268,6 +390,9 @@ function App() {
 
   // Filtered menu
   const filteredMenu = menu.filter(m => m.category === selectedCategory)
+  
+  // Pending orders count for badge
+  const pendingCount = orders.filter(o => o.status === 'pending' || o.status === 'preparing').length
 
   return (
     <div className="min-h-screen bg-gray-900 text-white flex flex-col">
@@ -276,8 +401,13 @@ function App() {
         <h1 className="text-xl font-bold flex items-center gap-2">
           🌮 Food Truck POS
         </h1>
-        <div className="text-sm text-gray-400">
-          {new Date().toLocaleDateString()}
+        <div className="flex items-center gap-3">
+          {!isOnline && (
+            <span className="text-xs bg-yellow-500 text-yellow-900 px-2 py-1 rounded">OFFLINE</span>
+          )}
+          <div className="text-sm text-gray-400">
+            {new Date().toLocaleDateString()}
+          </div>
         </div>
       </header>
 
@@ -288,6 +418,105 @@ function App() {
         </div>
       )}
 
+      {/* Payment Modal */}
+      {showPayment && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-2xl p-6 max-w-md w-full">
+            <h2 className="text-2xl font-bold mb-4">Payment - Order #{showPayment.order_number}</h2>
+            
+            <div className="space-y-3 mb-6">
+              <div className="flex justify-between">
+                <span>Subtotal</span>
+                <span>${(showPayment.total - showPayment.tax).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Tax</span>
+                <span>${showPayment.tax.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-lg font-bold">
+                <span>Order Total</span>
+                <span>${showPayment.total.toFixed(2)}</span>
+              </div>
+            </div>
+
+            {/* Tip selection */}
+            <div className="mb-4">
+              <label className="text-sm text-gray-400 block mb-2">Add Tip</label>
+              <div className="flex gap-2">
+                {[0, 1, 2, 3, 5].map(t => (
+                  <button
+                    key={t}
+                    onClick={() => setTip(t)}
+                    className={`flex-1 py-2 rounded-lg font-medium ${
+                      tip === t ? 'bg-truck-yellow text-gray-900' : 'bg-gray-700'
+                    }`}
+                  >
+                    {t === 0 ? 'No Tip' : `$${t}`}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-between text-xl font-bold mb-6 pt-4 border-t border-gray-600">
+              <span>Total with Tip</span>
+              <span className="text-truck-green">${(showPayment.total + tip).toFixed(2)}</span>
+            </div>
+
+            {/* Cash tendered input */}
+            <div className="mb-4">
+              <label className="text-sm text-gray-400 block mb-2">Cash Tendered (optional)</label>
+              <input
+                type="number"
+                value={cashTendered}
+                onChange={e => setCashTendered(e.target.value)}
+                placeholder="Enter amount..."
+                className="w-full bg-gray-700 rounded-lg px-4 py-3 text-xl"
+              />
+              {cashTendered && parseFloat(cashTendered) >= showPayment.total + tip && (
+                <div className="text-truck-green mt-2">
+                  Change: ${(parseFloat(cashTendered) - showPayment.total - tip).toFixed(2)}
+                </div>
+              )}
+            </div>
+
+            {/* Quick cash buttons */}
+            <div className="grid grid-cols-4 gap-2 mb-6">
+              {[5, 10, 20, 50].map(amount => (
+                <button
+                  key={amount}
+                  onClick={() => setCashTendered(amount.toString())}
+                  className="bg-gray-700 hover:bg-gray-600 py-2 rounded-lg"
+                >
+                  ${amount}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => processPayment(showPayment.id, 'cash')}
+                className="flex-1 bg-truck-yellow hover:bg-yellow-500 text-gray-900 font-bold py-4 rounded-xl"
+              >
+                💵 Cash
+              </button>
+              <button
+                onClick={() => processPayment(showPayment.id, 'card')}
+                className="flex-1 bg-purple-500 hover:bg-purple-600 font-bold py-4 rounded-xl"
+              >
+                💳 Card
+              </button>
+            </div>
+
+            <button
+              onClick={() => { setShowPayment(null); setTip(0); setCashTendered(''); }}
+              className="w-full mt-3 text-gray-400 py-2"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Main Content */}
       <main className="flex-1 overflow-hidden">
         {/* POS View */}
@@ -295,6 +524,22 @@ function App() {
           <div className="h-full flex flex-col lg:flex-row">
             {/* Menu Section */}
             <div className="flex-1 flex flex-col p-4 overflow-hidden">
+              {/* Quick Combos */}
+              <div className="flex gap-2 mb-3 overflow-x-auto no-scrollbar pb-2">
+                <button
+                  onClick={() => addCombo('Taco Combo', [1, 2, 14])}
+                  className="px-4 py-2 bg-gradient-to-r from-orange-500 to-red-500 rounded-full whitespace-nowrap font-medium"
+                >
+                  🔥 Taco Combo
+                </button>
+                <button
+                  onClick={() => addCombo('Burrito Special', [7, 10, 14])}
+                  className="px-4 py-2 bg-gradient-to-r from-green-500 to-teal-500 rounded-full whitespace-nowrap font-medium"
+                >
+                  💪 Burrito Special
+                </button>
+              </div>
+
               {/* Category tabs */}
               <div className="flex gap-2 mb-4 overflow-x-auto no-scrollbar pb-2">
                 {categories.map(cat => (
@@ -402,6 +647,14 @@ function App() {
                 >
                   {loading ? 'Processing...' : 'Submit Order'}
                 </button>
+                {cart.length > 0 && (
+                  <button
+                    onClick={() => setCart([])}
+                    className="w-full mt-2 text-red-400 text-sm py-2 hover:text-red-300"
+                  >
+                    Clear Cart
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -458,20 +711,12 @@ function App() {
                       </button>
                     )}
                     {order.status === 'ready' && !order.is_paid && (
-                      <>
-                        <button
-                          onClick={() => processPayment(order.id, 'cash')}
-                          className="flex-1 bg-truck-yellow hover:bg-yellow-500 text-gray-900 py-2 rounded-lg text-sm font-medium"
-                        >
-                          💵 Cash
-                        </button>
-                        <button
-                          onClick={() => processPayment(order.id, 'card')}
-                          className="flex-1 bg-purple-500 hover:bg-purple-600 py-2 rounded-lg text-sm font-medium"
-                        >
-                          💳 Card
-                        </button>
-                      </>
+                      <button
+                        onClick={() => setShowPayment(order)}
+                        className="flex-1 bg-truck-yellow hover:bg-yellow-500 text-gray-900 py-2 rounded-lg text-sm font-medium"
+                      >
+                        💰 Pay
+                      </button>
                     )}
                     {order.status === 'ready' && order.is_paid && (
                       <button
@@ -545,12 +790,66 @@ function App() {
           </div>
         )}
 
+        {/* Kitchen Display View */}
+        {view === 'kitchen' && (
+          <div className="p-4 h-full bg-gray-900">
+            <h2 className="text-2xl font-bold mb-6">👨‍🍳 Kitchen Display</h2>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {kitchenOrders.map(order => (
+                <div
+                  key={order.id}
+                  onClick={() => bumpOrder(order.id)}
+                  className={`cursor-pointer rounded-xl p-4 transition-all hover:scale-105 ${
+                    order.status === 'pending'
+                      ? 'bg-yellow-900/50 border-2 border-yellow-500'
+                      : 'bg-blue-900/50 border-2 border-blue-500'
+                  }`}
+                >
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="text-3xl font-bold">#{order.order_number}</div>
+                    <div className={`text-lg font-mono ${
+                      order.elapsed_seconds > 300 ? 'text-red-400' : 
+                      order.elapsed_seconds > 180 ? 'text-yellow-400' : 'text-green-400'
+                    }`}>
+                      {formatElapsed(order.elapsed_seconds)}
+                    </div>
+                  </div>
+                  
+                  <div className="text-sm text-gray-300 mb-3">{order.customer_name}</div>
+                  
+                  <div className="space-y-2">
+                    {order.items.map((item, idx) => (
+                      <div key={idx} className="flex items-start gap-2">
+                        <span className="bg-gray-700 px-2 py-0.5 rounded text-sm font-bold">
+                          {item.quantity}x
+                        </span>
+                        <span className="font-medium">{item.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  <div className={`mt-4 text-center py-2 rounded-lg text-sm font-bold uppercase ${
+                    order.status === 'pending' ? 'bg-yellow-500 text-yellow-900' : 'bg-blue-500'
+                  }`}>
+                    {order.status === 'pending' ? 'TAP TO START' : 'TAP WHEN DONE'}
+                  </div>
+                </div>
+              ))}
+              {kitchenOrders.length === 0 && (
+                <div className="text-center text-gray-500 py-12 col-span-full text-xl">
+                  🎉 All caught up!
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Sales View */}
         {view === 'sales' && dailySales && (
           <div className="p-4 overflow-y-auto h-full">
             <h2 className="text-2xl font-bold mb-6">📊 Daily Sales - {dailySales.date}</h2>
             
-            <div className="grid gap-4 md:grid-cols-4 mb-8">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
               <div className="bg-gray-800 rounded-xl p-4">
                 <div className="text-gray-400 text-sm">Total Orders</div>
                 <div className="text-3xl font-bold">{dailySales.total_orders}</div>
@@ -566,6 +865,17 @@ function App() {
               <div className="bg-gray-800 rounded-xl p-4">
                 <div className="text-gray-400 text-sm">💳 Card</div>
                 <div className="text-2xl font-bold">${dailySales.card_total.toFixed(2)}</div>
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2 mb-8">
+              <div className="bg-gray-800 rounded-xl p-4">
+                <div className="text-gray-400 text-sm">💰 Tips Collected</div>
+                <div className="text-2xl font-bold text-truck-yellow">${dailySales.total_tips.toFixed(2)}</div>
+              </div>
+              <div className="bg-gray-800 rounded-xl p-4">
+                <div className="text-gray-400 text-sm">📈 Avg Order Value</div>
+                <div className="text-2xl font-bold">${dailySales.average_order_value.toFixed(2)}</div>
               </div>
             </div>
 
@@ -622,7 +932,8 @@ function App() {
       <nav className="bg-gray-800 border-t border-gray-700 px-2 py-2 flex justify-around">
         {[
           { id: 'pos', icon: '🛒', label: 'POS' },
-          { id: 'orders', icon: '📋', label: 'Orders' },
+          { id: 'orders', icon: '📋', label: 'Orders', badge: pendingCount },
+          { id: 'kitchen', icon: '👨‍🍳', label: 'Kitchen' },
           { id: 'queue', icon: '📺', label: 'Queue' },
           { id: 'sales', icon: '📊', label: 'Sales' },
           { id: 'settings', icon: '⚙️', label: 'Menu' },
@@ -630,7 +941,7 @@ function App() {
           <button
             key={tab.id}
             onClick={() => setView(tab.id as View)}
-            className={`flex flex-col items-center py-2 px-4 rounded-lg transition-all ${
+            className={`relative flex flex-col items-center py-2 px-3 rounded-lg transition-all ${
               view === tab.id
                 ? 'bg-truck-orange text-white'
                 : 'text-gray-400 hover:text-white'
@@ -638,6 +949,11 @@ function App() {
           >
             <span className="text-xl">{tab.icon}</span>
             <span className="text-xs mt-1">{tab.label}</span>
+            {tab.badge && tab.badge > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
+                {tab.badge}
+              </span>
+            )}
           </button>
         ))}
       </nav>
