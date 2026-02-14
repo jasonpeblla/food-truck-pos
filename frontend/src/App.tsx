@@ -65,6 +65,23 @@ interface Location {
   notes: string
 }
 
+interface Shift {
+  id: number
+  staff_name: string
+  started_at: string
+  ended_at: string | null
+  is_active: boolean
+  starting_cash: number
+  ending_cash: number | null
+  expected_cash: number | null
+  total_orders: number
+  total_revenue: number
+  total_tips: number
+  cash_sales: number
+  card_sales: number
+  cash_variance: number | null
+}
+
 interface DailySales {
   date: string
   total_orders: number
@@ -76,7 +93,7 @@ interface DailySales {
   average_order_value: number
 }
 
-type View = 'pos' | 'orders' | 'queue' | 'kitchen' | 'sales' | 'settings' | 'locations'
+type View = 'pos' | 'orders' | 'queue' | 'kitchen' | 'sales' | 'settings' | 'locations' | 'shifts'
 
 // Sound effects (using Web Audio API)
 const playSound = (type: 'success' | 'alert' | 'ding') => {
@@ -146,6 +163,16 @@ function App() {
   const [newLocationName, setNewLocationName] = useState('')
   const [newLocationAddress, setNewLocationAddress] = useState('')
   const [gettingGPS, setGettingGPS] = useState(false)
+  
+  // Shift state
+  const [activeShift, setActiveShift] = useState<Shift | null>(null)
+  const [recentShifts, setRecentShifts] = useState<Shift[]>([])
+  const [showStartShift, setShowStartShift] = useState(false)
+  const [showCloseShift, setShowCloseShift] = useState(false)
+  const [staffName, setStaffName] = useState('')
+  const [startingCash, setStartingCash] = useState('')
+  const [endingCash, setEndingCash] = useState('')
+  const [shiftNotes, setShiftNotes] = useState('')
   
   const prevReadyCountRef = useRef(0)
 
@@ -306,12 +333,83 @@ function App() {
     }
   }
 
+  // Fetch shifts
+  const fetchShifts = useCallback(async () => {
+    try {
+      const [activeRes, historyRes] = await Promise.all([
+        fetch(`${API_BASE}/shifts/active`),
+        fetch(`${API_BASE}/shifts?limit=10`)
+      ])
+      
+      if (activeRes.ok) {
+        const active = await activeRes.json()
+        setActiveShift(active)
+      } else {
+        setActiveShift(null)
+      }
+      
+      if (historyRes.ok) {
+        const shifts = await historyRes.json()
+        setRecentShifts(shifts)
+      }
+    } catch (err) {
+      console.error('Failed to fetch shifts:', err)
+    }
+  }, [])
+
+  // Start shift
+  const startShift = async () => {
+    if (!staffName.trim()) return
+    
+    try {
+      await fetch(`${API_BASE}/shifts/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          staff_name: staffName.trim(),
+          starting_cash: parseFloat(startingCash) || 0
+        })
+      })
+      setShowStartShift(false)
+      setStaffName('')
+      setStartingCash('')
+      fetchShifts()
+      showNotification('Shift started!')
+    } catch (err) {
+      showNotification('Failed to start shift', 'alert')
+    }
+  }
+
+  // Close shift
+  const closeShift = async () => {
+    if (!endingCash.trim()) return
+    
+    try {
+      await fetch(`${API_BASE}/shifts/close`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ending_cash: parseFloat(endingCash) || 0,
+          notes: shiftNotes.trim()
+        })
+      })
+      setShowCloseShift(false)
+      setEndingCash('')
+      setShiftNotes('')
+      fetchShifts()
+      showNotification('Shift closed!')
+    } catch (err) {
+      showNotification('Failed to close shift', 'alert')
+    }
+  }
+
   // Initial load and polling
   useEffect(() => {
     fetchMenu()
     fetchOrders()
     fetchQueue()
     fetchLocations()
+    fetchShifts()
     
     const interval = setInterval(() => {
       fetchOrders()
@@ -322,7 +420,7 @@ function App() {
     }, 3000)
     
     return () => clearInterval(interval)
-  }, [fetchMenu, fetchOrders, fetchQueue, fetchKitchenOrders, fetchLocations, view])
+  }, [fetchMenu, fetchOrders, fetchQueue, fetchKitchenOrders, fetchLocations, fetchShifts, view])
 
   useEffect(() => {
     if (view === 'sales') {
@@ -334,7 +432,10 @@ function App() {
     if (view === 'locations') {
       fetchLocations()
     }
-  }, [view, fetchDailySales, fetchKitchenOrders, fetchLocations])
+    if (view === 'shifts') {
+      fetchShifts()
+    }
+  }, [view, fetchDailySales, fetchKitchenOrders, fetchLocations, fetchShifts])
 
   // Show notification
   const showNotification = (msg: string, type: 'success' | 'alert' = 'success') => {
@@ -1303,6 +1404,229 @@ function App() {
             </div>
           </div>
         )}
+
+        {/* Shifts View */}
+        {view === 'shifts' && (
+          <div className="p-4 overflow-y-auto h-full">
+            <h2 className="text-2xl font-bold mb-6">⏱️ Shift Management</h2>
+
+            {/* Start Shift Modal */}
+            {showStartShift && (
+              <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+                <div className="bg-gray-800 rounded-2xl p-6 max-w-md w-full">
+                  <h3 className="text-xl font-bold mb-4">Start New Shift</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-1">Staff Name</label>
+                      <input
+                        type="text"
+                        value={staffName}
+                        onChange={e => setStaffName(e.target.value)}
+                        placeholder="Your name"
+                        className="w-full bg-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-truck-orange"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-1">Starting Drawer Cash</label>
+                      <input
+                        type="number"
+                        value={startingCash}
+                        onChange={e => setStartingCash(e.target.value)}
+                        placeholder="0.00"
+                        className="w-full bg-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-truck-orange"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-3 mt-6">
+                    <button
+                      onClick={() => { setShowStartShift(false); setStaffName(''); setStartingCash(''); }}
+                      className="flex-1 bg-gray-700 hover:bg-gray-600 py-3 rounded-lg"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={startShift}
+                      disabled={!staffName.trim()}
+                      className="flex-1 bg-truck-green hover:bg-green-600 py-3 rounded-lg disabled:opacity-50"
+                    >
+                      Start Shift
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Close Shift Modal */}
+            {showCloseShift && activeShift && (
+              <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+                <div className="bg-gray-800 rounded-2xl p-6 max-w-md w-full">
+                  <h3 className="text-xl font-bold mb-4">Close Shift</h3>
+                  
+                  <div className="bg-gray-700 rounded-lg p-4 mb-4">
+                    <div className="text-sm text-gray-400 mb-2">Shift Summary</div>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div>Orders: <span className="font-bold">{activeShift.total_orders}</span></div>
+                      <div>Revenue: <span className="font-bold text-truck-green">${activeShift.total_revenue.toFixed(2)}</span></div>
+                      <div>Cash Sales: <span className="font-bold">${activeShift.cash_sales.toFixed(2)}</span></div>
+                      <div>Tips: <span className="font-bold text-truck-yellow">${activeShift.total_tips.toFixed(2)}</span></div>
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-gray-600">
+                      <div className="text-lg font-bold">
+                        Expected Cash: ${((activeShift.starting_cash || 0) + (activeShift.cash_sales || 0)).toFixed(2)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-1">Actual Drawer Cash</label>
+                      <input
+                        type="number"
+                        value={endingCash}
+                        onChange={e => setEndingCash(e.target.value)}
+                        placeholder="Count your drawer..."
+                        className="w-full bg-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-truck-orange text-xl"
+                      />
+                      {endingCash && (
+                        <div className={`mt-2 text-lg font-bold ${
+                          parseFloat(endingCash) >= (activeShift.starting_cash + activeShift.cash_sales) ? 'text-green-400' : 'text-red-400'
+                        }`}>
+                          Variance: ${(parseFloat(endingCash) - (activeShift.starting_cash + activeShift.cash_sales)).toFixed(2)}
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-1">Notes (optional)</label>
+                      <textarea
+                        value={shiftNotes}
+                        onChange={e => setShiftNotes(e.target.value)}
+                        placeholder="Any notes about the shift..."
+                        rows={2}
+                        className="w-full bg-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-truck-orange resize-none"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-3 mt-6">
+                    <button
+                      onClick={() => { setShowCloseShift(false); setEndingCash(''); setShiftNotes(''); }}
+                      className="flex-1 bg-gray-700 hover:bg-gray-600 py-3 rounded-lg"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={closeShift}
+                      disabled={!endingCash.trim()}
+                      className="flex-1 bg-red-500 hover:bg-red-600 py-3 rounded-lg disabled:opacity-50"
+                    >
+                      Close Shift
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Active Shift Card */}
+            {activeShift ? (
+              <div className="bg-truck-green/20 border-2 border-truck-green rounded-xl p-4 mb-6">
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <div className="text-sm text-gray-400">Active Shift</div>
+                    <div className="text-2xl font-bold">{activeShift.staff_name}</div>
+                    <div className="text-sm text-gray-400">
+                      Started: {new Date(activeShift.started_at).toLocaleTimeString()}
+                    </div>
+                  </div>
+                  <span className="bg-truck-green text-white px-3 py-1 rounded-full text-sm font-bold animate-pulse">
+                    🟢 ACTIVE
+                  </span>
+                </div>
+                
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                  <div className="bg-gray-800 rounded-lg p-3">
+                    <div className="text-xs text-gray-400">Orders</div>
+                    <div className="text-xl font-bold">{activeShift.total_orders}</div>
+                  </div>
+                  <div className="bg-gray-800 rounded-lg p-3">
+                    <div className="text-xs text-gray-400">Revenue</div>
+                    <div className="text-xl font-bold text-truck-green">${activeShift.total_revenue.toFixed(2)}</div>
+                  </div>
+                  <div className="bg-gray-800 rounded-lg p-3">
+                    <div className="text-xs text-gray-400">Cash Sales</div>
+                    <div className="text-xl font-bold">${activeShift.cash_sales.toFixed(2)}</div>
+                  </div>
+                  <div className="bg-gray-800 rounded-lg p-3">
+                    <div className="text-xs text-gray-400">Tips</div>
+                    <div className="text-xl font-bold text-truck-yellow">${activeShift.total_tips.toFixed(2)}</div>
+                  </div>
+                </div>
+                
+                <button
+                  onClick={() => setShowCloseShift(true)}
+                  className="w-full bg-red-500 hover:bg-red-600 py-3 rounded-lg font-bold"
+                >
+                  Close Shift
+                </button>
+              </div>
+            ) : (
+              <div className="bg-gray-800 rounded-xl p-6 mb-6 text-center">
+                <div className="text-4xl mb-4">⏰</div>
+                <div className="text-xl font-bold mb-2">No Active Shift</div>
+                <p className="text-gray-400 mb-4">Start a shift to track sales and manage the cash drawer.</p>
+                <button
+                  onClick={() => setShowStartShift(true)}
+                  className="bg-truck-green hover:bg-green-600 px-8 py-3 rounded-lg font-bold"
+                >
+                  Start Shift
+                </button>
+              </div>
+            )}
+
+            {/* Recent Shifts History */}
+            <h3 className="text-lg font-bold mb-3">Recent Shifts</h3>
+            <div className="space-y-3">
+              {recentShifts.filter(s => !s.is_active).map(shift => (
+                <div key={shift.id} className="bg-gray-800 rounded-xl p-4">
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <div className="font-bold">{shift.staff_name}</div>
+                      <div className="text-sm text-gray-400">
+                        {new Date(shift.started_at).toLocaleDateString()} • {new Date(shift.started_at).toLocaleTimeString()} - {shift.ended_at ? new Date(shift.ended_at).toLocaleTimeString() : 'N/A'}
+                      </div>
+                    </div>
+                    {shift.cash_variance !== null && (
+                      <span className={`text-sm font-bold ${shift.cash_variance >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {shift.cash_variance >= 0 ? '+' : ''}${shift.cash_variance.toFixed(2)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-4 gap-2 text-sm">
+                    <div>
+                      <div className="text-gray-500">Orders</div>
+                      <div className="font-bold">{shift.total_orders}</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-500">Revenue</div>
+                      <div className="font-bold text-truck-green">${shift.total_revenue.toFixed(2)}</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-500">Cash</div>
+                      <div className="font-bold">${shift.cash_sales.toFixed(2)}</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-500">Tips</div>
+                      <div className="font-bold text-truck-yellow">${shift.total_tips.toFixed(2)}</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {recentShifts.filter(s => !s.is_active).length === 0 && (
+                <div className="text-center text-gray-500 py-8">
+                  No shift history yet
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Bottom Navigation */}
@@ -1313,6 +1637,7 @@ function App() {
           { id: 'kitchen', icon: '👨‍🍳', label: 'Kitchen' },
           { id: 'queue', icon: '📺', label: 'Queue' },
           { id: 'sales', icon: '📊', label: 'Sales' },
+          { id: 'shifts', icon: '⏱️', label: 'Shift' },
           { id: 'locations', icon: '📍', label: 'Location' },
           { id: 'settings', icon: '⚙️', label: 'Menu' },
         ].map(tab => (
