@@ -27,6 +27,9 @@ from .favorites import router as favorites_router
 from .schedule import router as schedule_router
 from .trucks import router as trucks_router
 from .offline import router as offline_router
+from .tips import router as tips_router
+from .shortcuts import router as shortcuts_router
+from .specials import router as specials_router
 
 __all__ = [
     "menu_router",
@@ -57,5 +60,8 @@ __all__ = [
     "favorites_router",
     "schedule_router",
     "trucks_router",
-    "offline_router"
+    "offline_router",
+    "tips_router",
+    "shortcuts_router",
+    "specials_router"
 ]

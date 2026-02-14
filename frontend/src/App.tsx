@@ -225,6 +225,9 @@ function App() {
   } | null>(null)
   const [loyaltyDiscount, setLoyaltyDiscount] = useState(0)
   
+  // Specials state
+  const [todaySpecials, setTodaySpecials] = useState<{id: number, menu_item_id: number, name: string, emoji: string, special_price: number, original_price: number}[]>([])
+  
   // Goals state
   const [dailyGoal, setDailyGoal] = useState<{
     targets: {revenue: number, orders: number},
@@ -390,6 +393,17 @@ function App() {
       setWeatherRecs(data)
     } catch (err) {
       console.error('Failed to fetch weather recs:', err)
+    }
+  }, [])
+
+  // Fetch today's specials
+  const fetchTodaySpecials = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/specials/today`)
+      const data = await res.json()
+      setTodaySpecials(data)
+    } catch (err) {
+      console.error('Failed to fetch specials:', err)
     }
   }, [])
 
@@ -636,6 +650,7 @@ function App() {
     fetchStockAlerts()
     fetchWaitEstimate()
     fetchWeatherRecs()
+    fetchTodaySpecials()
     
     const interval = setInterval(() => {
       fetchOrders()
@@ -1339,8 +1354,28 @@ function App() {
                 >
                   💪 Burrito Special
                 </button>
+                {/* Today's Specials */}
+                {todaySpecials.length > 0 && (
+                  <>
+                    <div className="flex items-center px-2 text-gray-500 text-xs">|</div>
+                    <span className="px-2 py-2 text-xs text-yellow-400 whitespace-nowrap">⭐ Special:</span>
+                    {todaySpecials.slice(0, 2).map(special => (
+                      <button
+                        key={special.id}
+                        onClick={() => {
+                          const menuItem = menu.find(m => m.id === special.menu_item_id)
+                          if (menuItem) addToCart(menuItem)
+                        }}
+                        className="px-3 py-2 bg-yellow-900/50 border border-yellow-500 hover:bg-yellow-800/50 rounded-full whitespace-nowrap text-sm"
+                      >
+                        {special.emoji} {special.name} <span className="text-green-400">${special.special_price}</span>
+                        <span className="line-through text-gray-500 ml-1">${special.original_price}</span>
+                      </button>
+                    ))}
+                  </>
+                )}
                 {/* Weather Recommendations */}
-                {weatherRecs && weatherRecs.recommended_items.length > 0 && (
+                {weatherRecs && weatherRecs.recommended_items.length > 0 && !todaySpecials.length && (
                   <>
                     <div className="flex items-center px-2 text-gray-500 text-xs">|</div>
                     <span className="px-2 py-2 text-xs text-gray-400 whitespace-nowrap">

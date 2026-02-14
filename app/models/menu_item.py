@@ -14,6 +14,7 @@ class MenuItem(Base):
     is_available = Column(Boolean, default=True)
     display_order = Column(Integer, default=0)
     emoji = Column(String, default="🍽️")
+    photo_url = Column(String, default="")  # URL to item photo
     prep_time_seconds = Column(Integer, default=120)  # 2 min default
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
