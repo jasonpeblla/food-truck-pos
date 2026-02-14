@@ -108,7 +108,16 @@ interface HourlySales {
   peak_hour: number | null
 }
 
-type View = 'pos' | 'orders' | 'queue' | 'kitchen' | 'sales' | 'settings' | 'locations' | 'shifts'
+interface StockAlert {
+  id: number
+  name: string
+  stock_quantity: number
+  unit: string
+  threshold: number
+  severity: 'critical' | 'warning'
+}
+
+type View = 'pos' | 'orders' | 'queue' | 'kitchen' | 'sales' | 'settings' | 'locations' | 'shifts' | 'inventory'
 
 // Sound effects (using Web Audio API)
 const playSound = (type: 'success' | 'alert' | 'ding') => {
@@ -159,6 +168,7 @@ function App() {
   const [kitchenOrders, setKitchenOrders] = useState<KitchenOrder[]>([])
   const [dailySales, setDailySales] = useState<DailySales | null>(null)
   const [hourlySales, setHourlySales] = useState<HourlySales | null>(null)
+  const [stockAlerts, setStockAlerts] = useState<StockAlert[]>([])
   const [loading, setLoading] = useState(false)
   const [notification, setNotification] = useState('')
   const [showPayment, setShowPayment] = useState<Order | null>(null)
@@ -289,6 +299,17 @@ function App() {
       setHourlySales(data)
     } catch (err) {
       console.error('Failed to fetch hourly sales:', err)
+    }
+  }, [])
+
+  // Fetch stock alerts
+  const fetchStockAlerts = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/ingredients/alerts`)
+      const data = await res.json()
+      setStockAlerts(data)
+    } catch (err) {
+      console.error('Failed to fetch stock alerts:', err)
     }
   }, [])
 
@@ -445,17 +466,19 @@ function App() {
     fetchQueue()
     fetchLocations()
     fetchShifts()
+    fetchStockAlerts()
     
     const interval = setInterval(() => {
       fetchOrders()
       fetchQueue()
+      fetchStockAlerts()
       if (view === 'kitchen') {
         fetchKitchenOrders()
       }
     }, 3000)
     
     return () => clearInterval(interval)
-  }, [fetchMenu, fetchOrders, fetchQueue, fetchKitchenOrders, fetchLocations, fetchShifts, view])
+  }, [fetchMenu, fetchOrders, fetchQueue, fetchKitchenOrders, fetchLocations, fetchShifts, fetchStockAlerts, view])
 
   useEffect(() => {
     if (view === 'sales') {
@@ -721,6 +744,28 @@ function App() {
           </div>
         </div>
       </header>
+
+      {/* Stock Alerts Banner */}
+      {stockAlerts.length > 0 && (
+        <div 
+          className={`px-4 py-2 flex items-center justify-between cursor-pointer ${
+            stockAlerts.some(a => a.severity === 'critical') 
+              ? 'bg-red-600 text-white' 
+              : 'bg-yellow-500 text-yellow-900'
+          }`}
+          onClick={() => setView('inventory')}
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-lg">⚠️</span>
+            <span className="font-medium">
+              {stockAlerts.some(a => a.severity === 'critical') 
+                ? `${stockAlerts.filter(a => a.severity === 'critical').length} item(s) OUT OF STOCK` 
+                : `${stockAlerts.length} item(s) running low`}
+            </span>
+          </div>
+          <span className="text-sm opacity-75">Tap to view →</span>
+        </div>
+      )}
 
       {/* Notification */}
       {notification && (
@@ -1778,6 +1823,75 @@ function App() {
             </div>
           </div>
         )}
+
+        {/* Inventory View */}
+        {view === 'inventory' && (
+          <div className="p-4 overflow-y-auto h-full">
+            <h2 className="text-2xl font-bold mb-6">📦 Inventory & Stock</h2>
+
+            {/* Critical Alerts */}
+            {stockAlerts.filter(a => a.severity === 'critical').length > 0 && (
+              <div className="mb-6">
+                <h3 className="text-lg font-bold text-red-400 mb-3">🚨 Out of Stock</h3>
+                <div className="space-y-2">
+                  {stockAlerts.filter(a => a.severity === 'critical').map(alert => (
+                    <div key={alert.id} className="bg-red-900/50 border border-red-500 rounded-xl p-4 flex justify-between items-center">
+                      <div>
+                        <div className="font-bold text-red-300">{alert.name}</div>
+                        <div className="text-sm text-red-400">0 {alert.unit} remaining</div>
+                      </div>
+                      <span className="bg-red-500 text-white px-3 py-1 rounded-full text-sm font-bold">
+                        RESTOCK NOW
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Warning Alerts */}
+            {stockAlerts.filter(a => a.severity === 'warning').length > 0 && (
+              <div className="mb-6">
+                <h3 className="text-lg font-bold text-yellow-400 mb-3">⚠️ Running Low</h3>
+                <div className="space-y-2">
+                  {stockAlerts.filter(a => a.severity === 'warning').map(alert => (
+                    <div key={alert.id} className="bg-yellow-900/30 border border-yellow-600 rounded-xl p-4 flex justify-between items-center">
+                      <div>
+                        <div className="font-bold text-yellow-200">{alert.name}</div>
+                        <div className="text-sm text-yellow-400">
+                          {alert.stock_quantity} {alert.unit} remaining (threshold: {alert.threshold})
+                        </div>
+                      </div>
+                      <span className="bg-yellow-500 text-yellow-900 px-3 py-1 rounded-full text-sm font-bold">
+                        LOW
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* All Clear */}
+            {stockAlerts.length === 0 && (
+              <div className="bg-green-900/30 border border-green-500 rounded-xl p-8 text-center">
+                <div className="text-4xl mb-4">✅</div>
+                <div className="text-xl font-bold text-green-400">All Stock Levels OK</div>
+                <p className="text-gray-400 mt-2">No items below threshold</p>
+              </div>
+            )}
+
+            {/* Pro Tips */}
+            <div className="mt-8 bg-gray-800 rounded-xl p-4">
+              <h4 className="font-bold mb-2">💡 Inventory Tips</h4>
+              <ul className="text-sm text-gray-400 space-y-1">
+                <li>• Check stock before each shift</li>
+                <li>• Critical items appear in red banner</li>
+                <li>• Set thresholds based on daily usage</li>
+                <li>• Mark items sold out when depleted</li>
+              </ul>
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Bottom Navigation */}
@@ -1789,6 +1903,7 @@ function App() {
           { id: 'queue', icon: '📺', label: 'Queue' },
           { id: 'sales', icon: '📊', label: 'Sales' },
           { id: 'shifts', icon: '⏱️', label: 'Shift' },
+          { id: 'inventory', icon: '📦', label: 'Stock', badge: stockAlerts.length || undefined },
           { id: 'locations', icon: '📍', label: 'Location' },
           { id: 'settings', icon: '⚙️', label: 'Menu' },
         ].map(tab => (
