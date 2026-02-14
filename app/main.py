@@ -16,7 +16,8 @@ from app.routers import (
     receipts_router,
     history_router,
     discounts_router,
-    export_router
+    export_router,
+    refunds_router
 )
 from app.models import MenuItem, Location
 
@@ -94,6 +95,7 @@ app.include_router(receipts_router)
 app.include_router(history_router)
 app.include_router(discounts_router)
 app.include_router(export_router)
+app.include_router(refunds_router)
 
 @app.get("/")
 def root():
