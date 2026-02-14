@@ -9,7 +9,9 @@ from app.routers import (
     payments_router,
     locations_router,
     ingredients_router,
-    sales_router
+    sales_router,
+    modifiers_router,
+    kitchen_router
 )
 from app.models import MenuItem, Location
 
@@ -80,6 +82,8 @@ app.include_router(payments_router)
 app.include_router(locations_router)
 app.include_router(ingredients_router)
 app.include_router(sales_router)
+app.include_router(modifiers_router)
+app.include_router(kitchen_router)
 
 @app.get("/")
 def root():

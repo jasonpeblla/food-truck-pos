@@ -3,6 +3,7 @@ from .order import Order, OrderItem
 from .payment import Payment
 from .location import Location
 from .ingredient import Ingredient, MenuItemIngredient
+from .modifier import ModifierGroup, Modifier
 
 __all__ = [
     "MenuItem",
@@ -11,5 +12,7 @@ __all__ = [
     "Payment",
     "Location",
     "Ingredient",
-    "MenuItemIngredient"
+    "MenuItemIngredient",
+    "ModifierGroup",
+    "Modifier"
 ]

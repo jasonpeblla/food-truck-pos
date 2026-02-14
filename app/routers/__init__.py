@@ -4,6 +4,8 @@ from .payments import router as payments_router
 from .locations import router as locations_router
 from .ingredients import router as ingredients_router
 from .sales import router as sales_router
+from .modifiers import router as modifiers_router
+from .kitchen import router as kitchen_router
 
 __all__ = [
     "menu_router",
@@ -11,5 +13,7 @@ __all__ = [
     "payments_router",
     "locations_router",
     "ingredients_router",
-    "sales_router"
+    "sales_router",
+    "modifiers_router",
+    "kitchen_router"
 ]
