@@ -28,7 +28,11 @@ from app.routers import (
     events_router,
     reports_router,
     goals_router,
-    voice_router
+    voice_router,
+    favorites_router,
+    schedule_router,
+    trucks_router,
+    offline_router
 )
 from app.models import MenuItem, Location
 
@@ -118,6 +122,10 @@ app.include_router(events_router)
 app.include_router(reports_router)
 app.include_router(goals_router)
 app.include_router(voice_router)
+app.include_router(favorites_router)
+app.include_router(schedule_router)
+app.include_router(trucks_router)
+app.include_router(offline_router)
 
 @app.get("/")
 def root():

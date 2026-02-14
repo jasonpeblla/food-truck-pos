@@ -23,6 +23,10 @@ from .events import router as events_router
 from .reports import router as reports_router
 from .goals import router as goals_router
 from .voice import router as voice_router
+from .favorites import router as favorites_router
+from .schedule import router as schedule_router
+from .trucks import router as trucks_router
+from .offline import router as offline_router
 
 __all__ = [
     "menu_router",
@@ -49,5 +53,9 @@ __all__ = [
     "events_router",
     "reports_router",
     "goals_router",
-    "voice_router"
+    "voice_router",
+    "favorites_router",
+    "schedule_router",
+    "trucks_router",
+    "offline_router"
 ]
